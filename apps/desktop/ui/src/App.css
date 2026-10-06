@@ -1,3 +1,125 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ── Flinch: Cursor × Blender dark theme ───────────────────────── */
+
+:root {
+  /* Blender-inspired palette */
+  --flinch-bg-deep:    #1a1a1a;
+  --flinch-bg-base:    #222222;
+  --flinch-bg-panel:   #2d2d2d;
+  --flinch-bg-surface: #383838;
+  --flinch-bg-hover:   #474747;
+  --flinch-border:     #3a3a3a;
+  --flinch-border-dim: #2e2e2e;
+  --flinch-text:       #e8e8e8;
+  --flinch-text-dim:   #9a9a9a;
+  --flinch-text-muted: #6a6a6a;
+  /* Cursor-inspired accents */
+  --flinch-accent:     #4e8cff;
+  --flinch-accent-dim: #3a6fd0;
+  --flinch-success:    #48c78e;
+  --flinch-error:      #f14668;
+  --flinch-warning:    #ffb84d;
+}
+
+/* GPU-accelerated smooth scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--flinch-bg-hover) transparent;
+}
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--flinch-bg-hover);
+  border-radius: 3px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--flinch-text-muted);
+}
+
+/* Base body */
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: var(--flinch-bg-deep);
+  color: var(--flinch-text);
+  font-family: 'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* GPU-accelerated transitions */
+.flinch-transition {
+  transition: transform 150ms ease-out,
+              opacity 150ms ease-out,
+              background-color 150ms ease-out,
+              border-color 150ms ease-out,
+              box-shadow 150ms ease-out;
+  will-change: transform, opacity;
+}
+
+/* Panel glass effect */
+.flinch-glass {
+  backdrop-filter: blur(12px) saturate(150%);
+  -webkit-backdrop-filter: blur(12px) saturate(150%);
+}
+
+/* Subtle glow on focus */
+.flinch-focus-ring:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--flinch-accent), 0 0 12px rgba(78, 140, 255, 0.15);
+}
+
+/* Pulse animation for running state */
+@keyframes flinch-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+.flinch-pulse {
+  animation: flinch-pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Slide-in animation */
+@keyframes flinch-slide-in {
+  from {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+.flinch-slide-in {
+  animation: flinch-slide-in 200ms ease-out both;
+}
+
+/* Fade-in animation */
+@keyframes flinch-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.flinch-fade-in {
+  animation: flinch-fade-in 200ms ease-out both;
+}
+
+/* Status badge styles */
+.flinch-badge {
+  @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold uppercase tracking-wider;
+}
+
+/* Editor container - override Monaco spacing */
+.monaco-editor .margin,
+.monaco-editor .minimap {
+  transition: opacity 200ms ease-out;
+}

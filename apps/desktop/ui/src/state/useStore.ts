@@ -26,6 +26,7 @@ interface RunState {
   finalResult: AgentResult | null;
   error: string | null;
   history: SessionHistory[];
+  logs: string[];
 
   setPrompt: (prompt: string) => void;
   appendToken: (token: string) => void;
@@ -34,7 +35,6 @@ interface RunState {
   cancelRun: () => Promise<void>;
   setActiveAttempt: (index: number) => void;
   appendLog: (log: string) => void;
-  logs: string[];
   loadHistory: () => Promise<void>;
 }
 
@@ -48,15 +48,17 @@ export const useStore = create<RunState>((set, get) => ({
   finalResult: null,
   error: null,
   logs: [],
+  history: [],
 
   setPrompt: (prompt) => set({ prompt }),
-  
+
   appendToken: (token) => {
     set((state) => {
       const messages = [...state.messages];
       const last = messages[messages.length - 1];
       if (last && last.role === 'assistant') {
-        last.content += token;
+        // Immutable update for the last message
+        messages[messages.length - 1] = { ...last, content: last.content + token };
       } else {
         messages.push({ id: Date.now().toString(), role: 'assistant', content: token });
       }
@@ -66,33 +68,42 @@ export const useStore = create<RunState>((set, get) => ({
 
   addMessage: (role, content) => {
     set((state) => ({
-      messages: [...state.messages, { id: Date.now().toString() + Math.random(), role, content }]
+      messages: [...state.messages, { id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, role, content }],
     }));
   },
 
   appendLog: (log) => {
     set((state) => ({
-      logs: [...state.logs, log]
+      logs: [...state.logs, log],
     }));
   },
 
   startRun: async (prompt) => {
-    const { addMessage } = get();
+    const { addMessage, loadHistory } = get();
     set({
       isRunning: true,
       error: null,
       attempts: [],
       activeAttemptIndex: 0,
       finalResult: null,
-      logs: []
+      logs: [],
     });
     addMessage('user', prompt);
 
     try {
       const result = await invoke<AgentResult>('run_prompt', { prompt });
-      set({ finalResult: result, attempts: result.attempts, isRunning: false, activeAttemptIndex: Math.max(0, result.attempts.length - 1) });
-    } catch (e: any) {
-      set({ error: e.toString(), isRunning: false });
+      set({
+        finalResult: result,
+        attempts: result.attempts,
+        isRunning: false,
+        activeAttemptIndex: Math.max(0, result.attempts.length - 1),
+      });
+      addMessage('assistant', result.success ? '✅ Script executed successfully!' : '❌ Script failed after all attempts.');
+      // Refresh history sidebar after successful save
+      await loadHistory();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      set({ error: msg, isRunning: false });
     }
   },
 
@@ -109,19 +120,18 @@ export const useStore = create<RunState>((set, get) => ({
 
   setActiveAttempt: (index) => set({ activeAttemptIndex: index }),
 
-  history: [],
   loadHistory: async () => {
     try {
       const sessions = await invoke<[string, string, boolean, string][]>('list_sessions');
-      const history = sessions.map(s => ({
+      const history = sessions.map((s) => ({
         id: s[0],
         prompt: s[1],
         success: s[2],
-        created_at: s[3]
+        created_at: s[3],
       }));
       set({ history });
     } catch (e) {
       console.error(e);
     }
-  }
+  },
 }));
