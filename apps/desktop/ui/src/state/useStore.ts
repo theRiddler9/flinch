@@ -9,6 +9,13 @@ interface Message {
   content: string;
 }
 
+export interface SessionHistory {
+  id: string;
+  prompt: string;
+  success: boolean;
+  created_at: string;
+}
+
 interface RunState {
   prompt: string;
   isRunning: boolean;
@@ -18,6 +25,7 @@ interface RunState {
   activeAttemptIndex: number;
   finalResult: AgentResult | null;
   error: string | null;
+  history: SessionHistory[];
 
   setPrompt: (prompt: string) => void;
   appendToken: (token: string) => void;
@@ -25,8 +33,9 @@ interface RunState {
   startRun: (prompt: string) => Promise<void>;
   cancelRun: () => Promise<void>;
   setActiveAttempt: (index: number) => void;
-  appendLog: (log: string) => void; // Add simple log handling
+  appendLog: (log: string) => void;
   logs: string[];
+  loadHistory: () => Promise<void>;
 }
 
 export const useStore = create<RunState>((set, get) => ({
@@ -98,5 +107,21 @@ export const useStore = create<RunState>((set, get) => ({
     }
   },
 
-  setActiveAttempt: (index) => set({ activeAttemptIndex: index })
+  setActiveAttempt: (index) => set({ activeAttemptIndex: index }),
+
+  history: [],
+  loadHistory: async () => {
+    try {
+      const sessions = await invoke<[string, string, boolean, string][]>('list_sessions');
+      const history = sessions.map(s => ({
+        id: s[0],
+        prompt: s[1],
+        success: s[2],
+        created_at: s[3]
+      }));
+      set({ history });
+    } catch (e) {
+      console.error(e);
+    }
+  }
 }));

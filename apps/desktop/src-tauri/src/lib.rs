@@ -116,6 +116,15 @@ async fn list_sessions(
     store.list_sessions().map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+async fn get_session(
+    state: State<'_, Arc<AppState>>,
+    session_id: String,
+) -> Result<AgentResult, String> {
+    let store = state.store.lock().unwrap();
+    store.get_session(&session_id).map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -186,12 +195,14 @@ pub fn run() {
             }));
             Ok(())
         })
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             run_prompt,
             cancel_run,
             check_blender,
             list_sessions,
+            get_session,
             export_blend,
             export_script,
             export_preview

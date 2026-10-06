@@ -49,14 +49,42 @@ export function EditorPanel() {
             );
           })}
         </div>
-        {finalResult && (
-          <div className={cn(
-            "text-sm font-medium px-2 py-1 rounded",
-            finalResult.success ? "text-green-400 bg-green-400/10" : "text-red-400 bg-red-400/10"
-          )}>
-            {finalResult.success ? 'Success' : 'Failed'}
-          </div>
-        )}
+        <div className="flex gap-2 items-center">
+          {finalResult && (
+            <div className={cn(
+              "text-sm font-medium px-2 py-1 rounded mr-2",
+              finalResult.success ? "text-green-400 bg-green-400/10" : "text-red-400 bg-red-400/10"
+            )}>
+              {finalResult.success ? 'Success' : 'Failed'}
+            </div>
+          )}
+          <button 
+            className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-500 rounded text-white"
+            onClick={async () => {
+              const { invoke } = await import('@tauri-apps/api/core');
+              const { save } = await import('@tauri-apps/plugin-dialog');
+              const path = await save({ filters: [{ name: 'Blender', extensions: ['blend'] }] });
+              if (path) {
+                await invoke('export_blend', { script: currentAttempt.script, outPath: path });
+              }
+            }}
+          >
+            Export .blend
+          </button>
+          <button 
+            className="text-xs px-2 py-1 bg-slate-700 hover:bg-slate-600 rounded text-white"
+            onClick={async () => {
+              const { invoke } = await import('@tauri-apps/api/core');
+              const { save } = await import('@tauri-apps/plugin-dialog');
+              const path = await save({ filters: [{ name: 'Python', extensions: ['py'] }] });
+              if (path) {
+                await invoke('export_script', { script: currentAttempt.script, outPath: path });
+              }
+            }}
+          >
+            Save .py
+          </button>
+        </div>
       </div>
 
       {/* Editor */}
