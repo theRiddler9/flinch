@@ -3,6 +3,11 @@
   "version": "0.1.0",
   "scripts": {
     "check": "cargo fmt --all --check && cargo clippy --all-targets -- -D warnings && cargo test --all",
-    "eval": "cargo run -p flinch-cli -- eval"
-  }
+    "eval": "cargo run -p flinch-cli -- eval",
+    "dev": "bun run --cwd apps/desktop dev",
+    "build": "bun run --cwd apps/desktop build"
+  },
+  "workspaces": [
+    "apps/desktop"
+  ]
 }

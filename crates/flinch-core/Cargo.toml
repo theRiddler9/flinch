@@ -18,3 +18,4 @@ rand = "0.8"
 async-stream = "0.3"
 command-group = { version = "5", features = ["with-tokio"] }
 tempfile = "3"
+ts-rs = "12.0.1"
