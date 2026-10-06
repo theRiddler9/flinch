@@ -13,6 +13,11 @@ pub struct RunnerConfig {
     pub timeout_sec: u64,
 }
 
+pub struct ExportOptions {
+    pub save_blend: Option<String>,
+    pub render_image: Option<String>,
+}
+
 pub struct Runner {
     config: RunnerConfig,
 }
@@ -26,6 +31,7 @@ impl Runner {
         &self,
         script: &str,
         spec: Option<&str>,
+        export: Option<ExportOptions>,
         mut log_callback: F,
     ) -> Result<HarnessResult>
     where
@@ -59,6 +65,15 @@ impl Runner {
                 .await
                 .map_err(FlinchError::IoError)?;
             cmd.arg("--spec").arg(&spec_path);
+        }
+
+        if let Some(opts) = export {
+            if let Some(blend) = opts.save_blend {
+                cmd.arg("--save-blend").arg(blend);
+            }
+            if let Some(img) = opts.render_image {
+                cmd.arg("--render-image").arg(img);
+            }
         }
 
         cmd.stdout(Stdio::piped()).stderr(Stdio::piped());

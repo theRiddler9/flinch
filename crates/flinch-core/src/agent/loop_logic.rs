@@ -117,7 +117,10 @@ impl Agent {
                 continue;
             }
 
-            let harness_res = self.runner.run_script(&script, spec, &mut log_cb).await?;
+            let harness_res = self
+                .runner
+                .run_script(&script, spec, None, &mut log_cb)
+                .await?;
 
             attempts_record.push(AttemptRecord {
                 prompt: user_prompt.to_string(),
