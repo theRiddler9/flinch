@@ -62,4 +62,3 @@ pub struct HarnessResult {
     pub checks: Vec<CheckDetail>,
     pub duration_ms: u32,
 }
-
