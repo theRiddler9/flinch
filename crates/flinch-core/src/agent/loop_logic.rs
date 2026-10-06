@@ -18,8 +18,10 @@ pub struct Agent {
 }
 
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../apps/desktop/ui/src/bindings/")]
 pub struct AttemptRecord {
     pub prompt: String,
     pub raw_response: String,
@@ -27,7 +29,8 @@ pub struct AttemptRecord {
     pub harness_result: Option<HarnessResult>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../../apps/desktop/ui/src/bindings/")]
 pub struct AgentResult {
     pub success: bool,
     pub attempts: Vec<AttemptRecord>,
