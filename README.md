@@ -8,9 +8,10 @@
 
 - Describe a 3D or 2D (Grease Pencil) animation in chat and get a working Blender `bpy` script.
 - Every script runs in headless Blender; errors and scene stats go back to the model until it works (up to 3 attempts).
-- Monaco editor with diffs between attempts, a per-attempt error panel, and live Blender logs.
+- **GPU-accelerated UI**: Fluid animations, Blender-inspired aesthetic, and glass-morphism effects.
+- **Smart Editor**: Monaco editor with diffs between attempts, a per-attempt error panel, and live Blender logs.
 - Free by default: local models through Ollama, or free tiers of OpenRouter, Groq, and Google AI Studio. No paid SDK.
-- Session history in local SQLite; export results as `.blend` or `.py`.
+- **Local Persistence & Export**: Session history in local SQLite; export results as `.blend` or `.py`.
 - Reproducible 30-prompt eval reporting pass@1 and pass@3 per model.
 
 Generated scripts run in a temporary directory with a hard timeout. This is best-effort isolation, not a security sandbox.
