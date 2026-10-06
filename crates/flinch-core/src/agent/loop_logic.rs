@@ -68,7 +68,7 @@ impl Agent {
 
         let mut attempts_record = Vec::new();
 
-        for attempt in 1..=self.config.max_attempts {
+        'attempt_loop: for attempt in 1..=self.config.max_attempts {
             log_cb(format!(
                 "--- Attempt {}/{} ---",
                 attempt, self.config.max_attempts
@@ -91,7 +91,18 @@ impl Agent {
                         // log_cb(chunk.content).await;
                     }
                     Err(e) => {
-                        return Err(e);
+                        let err_msg = format!("Network or provider error: {}", e);
+                        attempts_record.push(AttemptRecord {
+                            prompt: user_prompt.to_string(),
+                            raw_response: raw_response.clone(),
+                            script: "".to_string(),
+                            harness_result: None,
+                        });
+                        messages.push(ChatMessage {
+                            role: "user".to_string(),
+                            content: err_msg,
+                        });
+                        continue 'attempt_loop;
                     }
                 }
             }
@@ -139,13 +150,27 @@ impl Agent {
                     .error
                     .map(|e| format!("{}: {}\n{}", e.error_type, e.message, e.traceback))
                     .unwrap_or_default();
+
+                let trunc = |s: &str, max_len: usize| -> String {
+                    if s.len() <= max_len {
+                        s.to_string()
+                    } else {
+                        let keep = max_len / 2;
+                        format!(
+                            "{} ...\n[TRUNCATED]\n... {}",
+                            &s[..keep],
+                            &s[s.len() - keep..]
+                        )
+                    }
+                };
+
                 let feedback = self
                     .config
                     .feedback_prompt_template
                     .replace("{stage}", &harness_res.stage)
-                    .replace("{error}", &error_detail)
-                    .replace("{stdout}", &harness_res.stdout)
-                    .replace("{script}", &script);
+                    .replace("{error}", &trunc(&error_detail, 2000))
+                    .replace("{stdout}", &trunc(&harness_res.stdout, 1500))
+                    .replace("{script}", &trunc(&script, 6000));
 
                 messages.push(ChatMessage {
                     role: "user".to_string(),

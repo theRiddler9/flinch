@@ -70,7 +70,7 @@ async fn main() -> anyhow::Result<()> {
             });
             let code = fs::read_to_string(&script)?;
             let res = runner
-                .run_script(&code, None, |log| async move {
+                .run_script(&code, None, None, |log| async move {
                     println!("{}", log);
                 })
                 .await?;

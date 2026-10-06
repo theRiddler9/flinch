@@ -82,32 +82,41 @@ impl LlmProvider for OpenAiCompatProvider {
                 Ok(resp) if resp.status().is_success() => {
                     let mut byte_stream = resp.bytes_stream();
                     let stream = async_stream::stream! {
-                        let mut buffer = String::new();
+                        let mut byte_buffer = Vec::new();
                         while let Some(chunk_res) = byte_stream.next().await {
                             match chunk_res {
                                 Ok(bytes) => {
-                                    if let Ok(text) = std::str::from_utf8(&bytes) {
-                                        buffer.push_str(text);
-                                        while let Some(pos) = buffer.find("\n\n") {
-                                            let event = buffer[..pos].to_string();
-                                            buffer = buffer[pos + 2..].to_string();
+                                    byte_buffer.extend_from_slice(&bytes);
+                                    let mut text = String::from_utf8_lossy(&byte_buffer).to_string();
 
-                                            for line in event.split('\n') {
-                                                if let Some(data) = line.strip_prefix("data: ") {
-                                                    if data.trim() == "[DONE]" {
-                                                        break;
-                                                    }
-                                                    if let Ok(parsed) = serde_json::from_str::<OpenAiResponseChunk>(data) {
+                                    while let Some(pos) = text.find("\n\n") {
+                                        let event = text[..pos].to_string();
+                                        text = text[pos + 2..].to_string();
+
+                                        for line in event.split('\n') {
+                                            if line.starts_with(':') {
+                                                continue; // handle keep-alive
+                                            }
+                                            if let Some(data) = line.strip_prefix("data: ") {
+                                                if data.trim() == "[DONE]" {
+                                                    break;
+                                                }
+                                                match serde_json::from_str::<OpenAiResponseChunk>(data) {
+                                                    Ok(parsed) => {
                                                         if let Some(choice) = parsed.choices.first() {
                                                             if let Some(content) = &choice.delta.content {
                                                                 yield Ok(Chunk { content: content.clone() });
                                                             }
                                                         }
                                                     }
+                                                    Err(_e) => {
+                                                        // Ignore malformed JSON (e.g. partial writes or errors)
+                                                    }
                                                 }
                                             }
                                         }
                                     }
+                                    byte_buffer = text.into_bytes();
                                 }
                                 Err(e) => {
                                     yield Err(FlinchError::ProviderError(e.to_string()));

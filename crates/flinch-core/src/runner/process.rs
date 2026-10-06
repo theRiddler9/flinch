@@ -145,6 +145,7 @@ impl Runner {
             Err(_) => {
                 // Timeout => kill process group
                 let _ = child.kill().await;
+                let _ = child.wait().await;
                 return Ok(HarnessResult {
                     schema: 1,
                     ok: false,

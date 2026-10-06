@@ -11,6 +11,8 @@ pub struct Store {
 impl Store {
     pub fn new<P: AsRef<Path>>(db_path: P) -> SqlResult<Self> {
         let conn = Connection::open(db_path)?;
+        // Enable foreign key enforcement
+        conn.execute_batch("PRAGMA foreign_keys = ON;")?;
         let store = Self { conn };
         store.init_schema()?;
         Ok(store)
@@ -37,10 +39,14 @@ impl Store {
         Ok(())
     }
 
+    /// Saves a session and all its attempts atomically within a transaction.
     pub fn save_session(&self, prompt: &str, result: &AgentResult) -> SqlResult<String> {
         let session_id = Uuid::new_v4().to_string();
 
-        self.conn.execute(
+        // Use a transaction to ensure atomic persistence
+        let tx = self.conn.unchecked_transaction()?;
+
+        tx.execute(
             "INSERT INTO sessions (id, prompt, success) VALUES (?1, ?2, ?3)",
             (&session_id, prompt, result.success),
         )?;
@@ -50,13 +56,20 @@ impl Store {
                 .harness_result
                 .as_ref()
                 .map(|hr| serde_json::to_string(hr).unwrap_or_default());
-            self.conn.execute(
-                "INSERT INTO attempts (session_id, attempt_number, script, raw_response, harness_result) 
+            tx.execute(
+                "INSERT INTO attempts (session_id, attempt_number, script, raw_response, harness_result)
                  VALUES (?1, ?2, ?3, ?4, ?5)",
-                (&session_id, (i as i32) + 1, &attempt.script, &attempt.raw_response, hr_json),
+                (
+                    &session_id,
+                    (i as i32) + 1,
+                    &attempt.script,
+                    &attempt.raw_response,
+                    hr_json,
+                ),
             )?;
         }
 
+        tx.commit()?;
         Ok(session_id)
     }
 
@@ -81,14 +94,16 @@ impl Store {
             .prepare("SELECT success FROM sessions WHERE id = ?1")?;
         let success: bool = stmt.query_row([session_id], |row| row.get(0))?;
 
-        let mut stmt = self.conn.prepare("SELECT script, raw_response, harness_result FROM attempts WHERE session_id = ?1 ORDER BY attempt_number ASC")?;
+        let mut stmt = self.conn.prepare(
+            "SELECT script, raw_response, harness_result FROM attempts WHERE session_id = ?1 ORDER BY attempt_number ASC",
+        )?;
         let rows = stmt.query_map([session_id], |row| {
             let script: String = row.get(0)?;
             let raw_response: String = row.get(1)?;
             let hr_str: Option<String> = row.get(2)?;
             let harness_result = hr_str.and_then(|s| serde_json::from_str(&s).ok());
             Ok(AttemptRecord {
-                prompt: "".to_string(), // we don't store prompt per attempt currently
+                prompt: String::new(),
                 raw_response,
                 script,
                 harness_result,

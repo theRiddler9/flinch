@@ -65,6 +65,8 @@ def main():
     parser.add_argument("--out", required=True)
     parser.add_argument("--spec", required=False)
     parser.add_argument("--render-test", action="store_true")
+    parser.add_argument("--save-blend", required=False, help="Path to save the .blend file")
+    parser.add_argument("--render-image", required=False, help="Path to save a rendered image frame")
     
     # In Blender, sys.argv includes the blender executable and --, so we slice it
     if "--" in sys.argv:
@@ -168,6 +170,16 @@ def main():
             }
         else:
             result["stage"] = "ok"
+            
+        if HAS_BPY:
+            if args.save_blend:
+                bpy.ops.wm.save_as_mainfile(filepath=os.path.abspath(args.save_blend))
+            
+            if args.render_image:
+                bpy.context.scene.render.filepath = os.path.abspath(args.render_image)
+                bpy.context.scene.render.engine = 'BLENDER_WORKBENCH'
+                # Ensure the path ends with a supported extension or blender adds it
+                bpy.ops.render.render(write_still=True)
             
     except Exception as e:
         result["stage"] = "harness_error"

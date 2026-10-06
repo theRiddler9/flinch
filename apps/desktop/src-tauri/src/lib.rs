@@ -125,6 +125,28 @@ async fn get_session(
     store.get_session(&session_id).map_err(|e| e.to_string())
 }
 
+fn resolve_workspace_path(path: &str) -> PathBuf {
+    // 1. Try tauri dev relative path
+    let p = PathBuf::from("../../").join(path);
+    if p.exists() {
+        return p;
+    }
+    // 2. Try current working directory
+    let p = PathBuf::from(path);
+    if p.exists() {
+        return p;
+    }
+    // 3. Try relative to the executable (production)
+    if let Ok(mut exe_path) = std::env::current_exe() {
+        exe_path.pop();
+        let p = exe_path.join(path);
+        if p.exists() {
+            return p;
+        }
+    }
+    PathBuf::from(path)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -139,7 +161,8 @@ pub fn run() {
             let store = Store::new(db_path).expect("Failed to initialize SQLite store");
 
             // Setup Agent & Runner
-            let config_str = fs::read_to_string("../../flinch.toml").unwrap_or_default();
+            let config_path = resolve_workspace_path("flinch.toml");
+            let config_str = fs::read_to_string(&config_path).unwrap_or_default();
             let app_config: Option<flinch_core::config::AppConfig> =
                 toml::from_str(&config_str).ok();
 
@@ -171,9 +194,11 @@ pub fn run() {
             });
 
             // We must read prompts from current dir if not packaged
-            let system_prompt = fs::read_to_string("../../prompts/system.md").unwrap_or_default();
-            let feedback_prompt =
-                fs::read_to_string("../../prompts/feedback.md").unwrap_or_default();
+            let sys_path = resolve_workspace_path("prompts/system.md");
+            let system_prompt = fs::read_to_string(&sys_path).unwrap_or_default();
+
+            let fb_path = resolve_workspace_path("prompts/feedback.md");
+            let feedback_prompt = fs::read_to_string(&fb_path).unwrap_or_default();
 
             let agent = Agent::new(
                 Arc::new(provider),
