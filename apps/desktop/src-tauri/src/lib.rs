@@ -8,11 +8,11 @@ struct LogEvent {
 }
 
 #[tauri::command]
-async fn run_prompt(app_handle: tauri::AppHandle, prompt: String) -> Result<AgentResult, String> {
+async fn run_prompt(_app_handle: tauri::AppHandle, _prompt: String) -> Result<AgentResult, String> {
     // Scaffold: will wire to actual flinch_core agent loop
     // Example bridging callback:
-    let log_cb = {
-        let app = app_handle.clone();
+    let _log_cb = {
+        let app = _app_handle.clone();
         move |log_line: String| {
             let app = app.clone();
             async move {
@@ -21,8 +21,8 @@ async fn run_prompt(app_handle: tauri::AppHandle, prompt: String) -> Result<Agen
         }
     };
 
-    // agent.run_task(&prompt, None, log_cb).await...
-    
+    // agent.run_task(&_prompt, None, _log_cb).await...
+
     Err("Not implemented yet".into())
 }
 
