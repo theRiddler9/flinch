@@ -1,50 +1,64 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
-import "./App.css";
+import { useEffect } from 'react';
+import { listen } from '@tauri-apps/api/event';
+import { useStore } from './state/useStore';
+import { Layout } from './components/Layout';
+import { ChatPanel } from './components/ChatPanel';
+import { EditorPanel } from './components/EditorPanel';
+import './App.css';
 
 function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+  const { appendToken } = useStore();
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
-  }
+  useEffect(() => {
+    let tokenBuffer = '';
+    let logBuffer: string[] = [];
+    let rafId: number | null = null;
+
+    const flush = () => {
+      if (tokenBuffer) {
+        appendToken(tokenBuffer);
+        tokenBuffer = '';
+      }
+      if (logBuffer.length > 0) {
+        // Zustand doesn't have a batch-append for logs yet, let's just add a new method or map it
+        // Or we can just call appendLog for each or create a bulk method.
+        // Let's assume useStore doesn't have bulk yet, we can dispatch state updates carefully.
+        useStore.setState((state) => ({ logs: [...state.logs, ...logBuffer] }));
+        logBuffer = [];
+      }
+      rafId = null;
+    };
+
+    const scheduleFlush = () => {
+      if (!rafId) {
+        rafId = requestAnimationFrame(flush);
+      }
+    };
+
+    // Listen for agent token streaming
+    const unlistenToken = listen<{ message: string }>('agent://token', (event) => {
+      tokenBuffer += event.payload.message;
+      scheduleFlush();
+    });
+
+    // Listen for blender background logs
+    const unlistenLog = listen<{ message: string }>('blender://log', (event) => {
+      logBuffer.push(event.payload.message);
+      scheduleFlush();
+    });
+
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId);
+      unlistenToken.then(f => f());
+      unlistenLog.then(f => f());
+    };
+  }, [appendToken]);
 
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
-
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
-
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
-        />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
-    </main>
+    <Layout>
+      <ChatPanel />
+      <EditorPanel />
+    </Layout>
   );
 }
 
