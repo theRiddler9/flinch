@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "crates/flinch-core",
+    "crates/flinch-cli"
+]
+resolver = "2"
