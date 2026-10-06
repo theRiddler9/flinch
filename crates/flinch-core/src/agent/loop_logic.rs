@@ -1,4 +1,4 @@
-use crate::error::{FlinchError, Result};
+use crate::error::Result;
 use crate::harness::HarnessResult;
 use crate::provider::{ChatMessage, ChatRequest, LlmProvider};
 use crate::runner::process::Runner;
@@ -34,15 +34,20 @@ pub struct AgentResult {
 }
 
 impl Agent {
-    pub fn new(
-        provider: Arc<dyn LlmProvider>,
-        runner: Arc<Runner>,
-        config: AgentConfig,
-    ) -> Self {
-        Self { provider, runner, config }
+    pub fn new(provider: Arc<dyn LlmProvider>, runner: Arc<Runner>, config: AgentConfig) -> Self {
+        Self {
+            provider,
+            runner,
+            config,
+        }
     }
 
-    pub async fn run_task<F, Fut>(&self, user_prompt: &str, mut log_cb: F) -> Result<AgentResult>
+    pub async fn run_task<F, Fut>(
+        &self,
+        user_prompt: &str,
+        spec: Option<&str>,
+        mut log_cb: F,
+    ) -> Result<AgentResult>
     where
         F: FnMut(String) -> Fut + Copy,
         Fut: std::future::Future<Output = ()> + Send,
@@ -61,7 +66,11 @@ impl Agent {
         let mut attempts_record = Vec::new();
 
         for attempt in 1..=self.config.max_attempts {
-            log_cb(format!("--- Attempt {}/{} ---", attempt, self.config.max_attempts)).await;
+            log_cb(format!(
+                "--- Attempt {}/{} ---",
+                attempt, self.config.max_attempts
+            ))
+            .await;
 
             let req = ChatRequest {
                 messages: messages.clone(),
@@ -83,7 +92,7 @@ impl Agent {
                     }
                 }
             }
-            
+
             messages.push(ChatMessage {
                 role: "assistant".to_string(),
                 content: raw_response.clone(),
@@ -97,7 +106,7 @@ impl Agent {
                     script: "".to_string(),
                     harness_result: None,
                 });
-                
+
                 messages.push(ChatMessage {
                     role: "user".to_string(),
                     content: "No Python code block found in your response. Please provide the complete script in a single ```python block.".to_string(),
@@ -105,8 +114,8 @@ impl Agent {
                 continue;
             }
 
-            let harness_res = self.runner.run_script(&script, log_cb).await?;
-            
+            let harness_res = self.runner.run_script(&script, spec, log_cb).await?;
+
             attempts_record.push(AttemptRecord {
                 prompt: user_prompt.to_string(),
                 raw_response: raw_response.clone(),
@@ -120,13 +129,18 @@ impl Agent {
                     attempts: attempts_record,
                 });
             } else {
-                let error_detail = harness_res.error.map(|e| format!("{}: {}\n{}", e.error_type, e.message, e.traceback)).unwrap_or_default();
-                let feedback = self.config.feedback_prompt_template
+                let error_detail = harness_res
+                    .error
+                    .map(|e| format!("{}: {}\n{}", e.error_type, e.message, e.traceback))
+                    .unwrap_or_default();
+                let feedback = self
+                    .config
+                    .feedback_prompt_template
                     .replace("{stage}", &harness_res.stage)
                     .replace("{error}", &error_detail)
                     .replace("{stdout}", &harness_res.stdout)
                     .replace("{script}", &script);
-                
+
                 messages.push(ChatMessage {
                     role: "user".to_string(),
                     content: feedback,
@@ -144,7 +158,7 @@ impl Agent {
 fn extract_python_code(text: &str) -> String {
     let mut script = String::new();
     let mut in_block = false;
-    
+
     for line in text.lines() {
         if line.starts_with("```python") || line.starts_with("``` python") {
             in_block = true;
@@ -152,12 +166,12 @@ fn extract_python_code(text: &str) -> String {
         } else if line.starts_with("```") && in_block {
             break;
         }
-        
+
         if in_block {
             script.push_str(line);
             script.push('\n');
         }
     }
-    
+
     script
 }

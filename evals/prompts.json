@@ -23,5 +23,245 @@
     "checks": [
       { "type": "object_count", "object_type": "CAMERA", "min": 1 }
     ]
+  },
+  {
+    "id": "easy-04",
+    "tier": "easy",
+    "prompt": "Create a cylinder scaled by 2 along the Z axis.",
+    "checks": [
+      { "type": "object_count", "object_type": "MESH", "min": 1 }
+    ]
+  },
+  {
+    "id": "easy-05",
+    "tier": "easy",
+    "prompt": "Create a plane and a sun light.",
+    "checks": [
+      { "type": "object_count", "object_type": "MESH", "min": 1 },
+      { "type": "object_count", "object_type": "LIGHT", "min": 1 }
+    ]
+  },
+  {
+    "id": "easy-06",
+    "tier": "easy",
+    "prompt": "Create three cubes arranged in a line.",
+    "checks": [
+      { "type": "object_count", "object_type": "MESH", "min": 3 }
+    ]
+  },
+  {
+    "id": "easy-07",
+    "tier": "easy",
+    "prompt": "Create a cone rotated 45 degrees on the X axis.",
+    "checks": [
+      { "type": "object_count", "object_type": "MESH", "min": 1 }
+    ]
+  },
+  {
+    "id": "easy-08",
+    "tier": "easy",
+    "prompt": "Create a monkey head (Suzanne) at the origin.",
+    "checks": [
+      { "type": "object_count", "object_type": "MESH", "min": 1 }
+    ]
+  },
+  {
+    "id": "easy-09",
+    "tier": "easy",
+    "prompt": "Create a spot light pointing downwards.",
+    "checks": [
+      { "type": "object_count", "object_type": "LIGHT", "min": 1 }
+    ]
+  },
+  {
+    "id": "easy-10",
+    "tier": "easy",
+    "prompt": "Create a grid mesh with 10 subdivisions.",
+    "checks": [
+      { "type": "object_count", "object_type": "MESH", "min": 1 }
+    ]
+  },
+  {
+    "id": "med-01",
+    "tier": "medium",
+    "prompt": "Create a cube and assign a red material to it.",
+    "checks": [
+      { "type": "object_count", "object_type": "MESH", "min": 1 },
+      { "type": "has_material", "min": 1 }
+    ]
+  },
+  {
+    "id": "med-02",
+    "tier": "medium",
+    "prompt": "Create a sphere with a subdivision surface modifier.",
+    "checks": [
+      { "type": "object_count", "object_type": "MESH", "min": 1 },
+      { "type": "has_modifier", "modifier_type": "SUBSURF" }
+    ]
+  },
+  {
+    "id": "med-03",
+    "tier": "medium",
+    "prompt": "Create a cube that moves from origin to (5,0,0) over 60 frames.",
+    "checks": [
+      { "type": "object_count", "object_type": "MESH", "min": 1 },
+      { "type": "has_keyframes", "data_path": "location", "min_keyframes": 2 }
+    ]
+  },
+  {
+    "id": "med-04",
+    "tier": "medium",
+    "prompt": "Create a red cube that bounces up and down 3 times over 2 seconds at 24 fps.",
+    "checks": [
+      { "type": "object_count", "object_type": "MESH", "min": 1 },
+      { "type": "has_keyframes", "data_path": "location", "min_keyframes": 4 },
+      { "type": "frame_range", "min_length": 48 }
+    ]
+  },
+  {
+    "id": "med-05",
+    "tier": "medium",
+    "prompt": "Create a plane and apply a solidify modifier to it.",
+    "checks": [
+      { "type": "object_count", "object_type": "MESH", "min": 1 },
+      { "type": "has_modifier", "modifier_type": "SOLIDIFY" }
+    ]
+  },
+  {
+    "id": "med-06",
+    "tier": "medium",
+    "prompt": "Create a material with a glossy node and assign it to a new monkey head.",
+    "checks": [
+      { "type": "object_count", "object_type": "MESH", "min": 1 },
+      { "type": "has_material", "min": 1 }
+    ]
+  },
+  {
+    "id": "med-07",
+    "tier": "medium",
+    "prompt": "Create a cylinder that spins continuously by keyframing its Z rotation.",
+    "checks": [
+      { "type": "object_count", "object_type": "MESH", "min": 1 },
+      { "type": "has_keyframes", "data_path": "rotation_euler", "min_keyframes": 2 }
+    ]
+  },
+  {
+    "id": "med-08",
+    "tier": "medium",
+    "prompt": "Create a cube and use an array modifier to make a line of 5 cubes.",
+    "checks": [
+      { "type": "object_count", "object_type": "MESH", "min": 1 },
+      { "type": "has_modifier", "modifier_type": "ARRAY" }
+    ]
+  },
+  {
+    "id": "med-09",
+    "tier": "medium",
+    "prompt": "Create a torus that scales up from 0 to 1 over 24 frames.",
+    "checks": [
+      { "type": "object_count", "object_type": "MESH", "min": 1 },
+      { "type": "has_keyframes", "data_path": "scale", "min_keyframes": 2 }
+    ]
+  },
+  {
+    "id": "med-10",
+    "tier": "medium",
+    "prompt": "Create a camera animated to pan from left to right.",
+    "checks": [
+      { "type": "object_count", "object_type": "CAMERA", "min": 1 },
+      { "type": "has_keyframes", "data_path": "location", "min_keyframes": 2 }
+    ]
+  },
+  {
+    "id": "hard-01",
+    "tier": "hard",
+    "prompt": "Create a Grease Pencil object and draw a simple square using the v3 API (Blender 4.3+).",
+    "checks": [
+      { "type": "object_count", "object_type": "GREASEPENCIL", "min": 1 },
+      { "type": "has_grease_pencil_strokes", "min": 1 }
+    ]
+  },
+  {
+    "id": "hard-02",
+    "tier": "hard",
+    "prompt": "Create two cubes and add a Copy Location constraint from the first to the second.",
+    "checks": [
+      { "type": "object_count", "object_type": "MESH", "min": 2 },
+      { "type": "has_constraint", "constraint_type": "COPY_LOCATION" }
+    ]
+  },
+  {
+    "id": "hard-03",
+    "tier": "hard",
+    "prompt": "Add a particle system to a plane that emits 100 particles.",
+    "checks": [
+      { "type": "object_count", "object_type": "MESH", "min": 1 },
+      { "type": "has_modifier", "modifier_type": "PARTICLE_SYSTEM" }
+    ]
+  },
+  {
+    "id": "hard-04",
+    "tier": "hard",
+    "prompt": "Create a sphere, add a shape key that squashes it, and keyframe the shape key value.",
+    "checks": [
+      { "type": "object_count", "object_type": "MESH", "min": 1 },
+      { "type": "has_shape_keys", "min": 1 },
+      { "type": "has_keyframes", "data_path": "key_blocks", "min_keyframes": 2 }
+    ]
+  },
+  {
+    "id": "hard-05",
+    "tier": "hard",
+    "prompt": "Create a driver that links the X rotation of a monkey head to the X location of a cube.",
+    "checks": [
+      { "type": "object_count", "object_type": "MESH", "min": 2 },
+      { "type": "has_driver", "min": 1 }
+    ]
+  },
+  {
+    "id": "hard-06",
+    "tier": "hard",
+    "prompt": "Animate a Grease Pencil line that grows from left to right over 20 frames using Build modifier.",
+    "checks": [
+      { "type": "object_count", "object_type": "GREASEPENCIL", "min": 1 },
+      { "type": "has_modifier", "modifier_type": "GP_BUILD" }
+    ]
+  },
+  {
+    "id": "hard-07",
+    "tier": "hard",
+    "prompt": "Create a rig (armature) with two bones and parent a cylinder to it using automatic weights.",
+    "checks": [
+      { "type": "object_count", "object_type": "ARMATURE", "min": 1 },
+      { "type": "object_count", "object_type": "MESH", "min": 1 },
+      { "type": "has_modifier", "modifier_type": "ARMATURE" }
+    ]
+  },
+  {
+    "id": "hard-08",
+    "tier": "hard",
+    "prompt": "Create a chain of three objects swinging together by parenting them and keyframing the parent's rotation.",
+    "checks": [
+      { "type": "object_count", "object_type": "MESH", "min": 3 },
+      { "type": "has_keyframes", "data_path": "rotation_euler", "min_keyframes": 2 }
+    ]
+  },
+  {
+    "id": "hard-09",
+    "tier": "hard",
+    "prompt": "Create a cloth simulation by applying a cloth modifier to a subdivided plane and a collision modifier to a cube below it.",
+    "checks": [
+      { "type": "object_count", "object_type": "MESH", "min": 2 },
+      { "type": "has_modifier", "modifier_type": "CLOTH" },
+      { "type": "has_modifier", "modifier_type": "COLLISION" }
+    ]
+  },
+  {
+    "id": "hard-10",
+    "tier": "hard",
+    "prompt": "Generate a procedural building using a script that creates a grid of 3x3x3 cubes, but skips the center cube.",
+    "checks": [
+      { "type": "object_count", "object_type": "MESH", "min": 26 }
+    ]
   }
 ]

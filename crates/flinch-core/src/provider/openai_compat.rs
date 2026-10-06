@@ -2,12 +2,11 @@ use super::{ChatRequest, Chunk, LlmProvider};
 use crate::error::{FlinchError, Result};
 use futures_core::Stream;
 use futures_util::stream::StreamExt;
+use rand::Rng;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::time::Duration;
 use tokio::time::sleep;
-use rand::Rng;
 
 pub struct OpenAiCompatProvider {
     pub base_url: String,
@@ -71,7 +70,9 @@ impl LlmProvider for OpenAiCompatProvider {
         let max_retries = 5;
 
         loop {
-            let req_builder = self.client.post(&url)
+            let req_builder = self
+                .client
+                .post(&url)
                 .bearer_auth(&self.api_key)
                 .json(&request_body);
 
@@ -90,10 +91,9 @@ impl LlmProvider for OpenAiCompatProvider {
                                         while let Some(pos) = buffer.find("\n\n") {
                                             let event = buffer[..pos].to_string();
                                             buffer = buffer[pos + 2..].to_string();
-                                            
+
                                             for line in event.split('\n') {
-                                                if line.starts_with("data: ") {
-                                                    let data = &line[6..];
+                                                if let Some(data) = line.strip_prefix("data: ") {
                                                     if data.trim() == "[DONE]" {
                                                         break;
                                                     }
@@ -121,7 +121,10 @@ impl LlmProvider for OpenAiCompatProvider {
                     let status = resp.status();
                     if status.as_u16() == 429 || status.is_server_error() {
                         if retries >= max_retries {
-                            return Err(FlinchError::ProviderError(format!("HTTP error {}", status)));
+                            return Err(FlinchError::ProviderError(format!(
+                                "HTTP error {}",
+                                status
+                            )));
                         }
                         let base_backoff = 2u64.pow(retries as u32) * 1000;
                         let jitter: u64 = rand::thread_rng().gen_range(0..1000);
@@ -129,7 +132,10 @@ impl LlmProvider for OpenAiCompatProvider {
                         retries += 1;
                     } else {
                         let text = resp.text().await.unwrap_or_default();
-                        return Err(FlinchError::ProviderError(format!("HTTP error {}: {}", status, text)));
+                        return Err(FlinchError::ProviderError(format!(
+                            "HTTP error {}: {}",
+                            status, text
+                        )));
                     }
                 }
                 Err(e) => {

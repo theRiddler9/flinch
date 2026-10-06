@@ -137,8 +137,12 @@ def main():
         
         # 4. Checks (stubbed)
         if args.spec:
-            # TODO: implement checks.py logic
-            pass
+            try:
+                sys.path.append(os.path.dirname(__file__))
+                import checks
+                result["checks"] = checks.run_checks(args.spec, result["scene_stats"])
+            except Exception as e:
+                result["warnings"].append(f"Check eval failed: {e}")
             
         # 5. Render test (stubbed)
         if args.render_test:
@@ -147,6 +151,13 @@ def main():
             
         result["stage"] = "ok"
         result["ok"] = True
+        
+        all_passed = True
+        for c in result.get("checks", []):
+            if not c.get("passed", False):
+                all_passed = False
+                
+        result["checks_passed"] = all_passed
             
     except Exception as e:
         result["stage"] = "harness_error"
