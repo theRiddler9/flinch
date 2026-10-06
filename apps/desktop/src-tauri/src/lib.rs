@@ -1,9 +1,29 @@
 use flinch_core::agent::loop_logic::AgentResult;
 
+use tauri::Emitter;
+
+#[derive(Clone, serde::Serialize)]
+struct LogEvent {
+    message: String,
+}
+
 #[tauri::command]
-async fn run_prompt(prompt: String) -> Result<AgentResult, String> {
-    // Scaffold: will wire to flinch_core agent loop
-    Err("Not implemented".into())
+async fn run_prompt(app_handle: tauri::AppHandle, prompt: String) -> Result<AgentResult, String> {
+    // Scaffold: will wire to actual flinch_core agent loop
+    // Example bridging callback:
+    let log_cb = {
+        let app = app_handle.clone();
+        move |log_line: String| {
+            let app = app.clone();
+            async move {
+                let _ = app.emit("blender://log", LogEvent { message: log_line });
+            }
+        }
+    };
+
+    // agent.run_task(&prompt, None, log_cb).await...
+    
+    Err("Not implemented yet".into())
 }
 
 #[tauri::command]
