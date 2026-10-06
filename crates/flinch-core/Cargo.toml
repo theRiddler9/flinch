@@ -11,3 +11,10 @@ serde_json = "1"
 thiserror = "1"
 rusqlite = { version = "0.31", features = ["bundled"] }
 tracing = "0.1"
+futures-core = "0.3"
+async-trait = "0.1"
+futures-util = "0.3"
+rand = "0.8"
+async-stream = "0.3"
+command-group = { version = "5", features = ["with-tokio"] }
+tempfile = "3"
