@@ -1,0 +1,27 @@
+[
+  {
+    "id": "easy-01",
+    "tier": "easy",
+    "prompt": "Create a default cube at the origin.",
+    "checks": [
+      { "type": "object_count", "object_type": "MESH", "min": 1 }
+    ]
+  },
+  {
+    "id": "easy-02",
+    "tier": "easy",
+    "prompt": "Create a sphere and a point light above it.",
+    "checks": [
+      { "type": "object_count", "object_type": "MESH", "min": 1 },
+      { "type": "object_count", "object_type": "LIGHT", "min": 1 }
+    ]
+  },
+  {
+    "id": "easy-03",
+    "tier": "easy",
+    "prompt": "Create a camera at location (5, 5, 5) looking at the origin.",
+    "checks": [
+      { "type": "object_count", "object_type": "CAMERA", "min": 1 }
+    ]
+  }
+]
