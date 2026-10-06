@@ -1,0 +1,7 @@
+{
+  "name": "flinch",
+  "version": "0.1.0",
+  "scripts": {
+    "check": "cargo fmt --all --check && cargo clippy --all-targets -- -D warnings && cargo test --all"
+  }
+}

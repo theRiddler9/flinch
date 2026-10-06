@@ -1,0 +1,9 @@
+[blender]
+bin = "/path/to/blender"
+
+[provider]
+kind = "openai_compatible"
+base_url = "http://localhost:11434/v1"
+model = "llama3"
+api_key_env = ""
+max_concurrency = 1
