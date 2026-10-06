@@ -149,15 +149,25 @@ def main():
             result["stage"] = "render"
             # TODO: render logic
             
-        result["stage"] = "ok"
-        result["ok"] = True
-        
         all_passed = True
+        failed_checks = []
         for c in result.get("checks", []):
             if not c.get("passed", False):
                 all_passed = False
+                failed_checks.append(f"{c.get('id', 'Unknown')}: {c.get('detail', '')}")
                 
         result["checks_passed"] = all_passed
+        result["ok"] = all_passed
+        if not all_passed:
+            result["stage"] = "checks_failed"
+            result["error"] = {
+                "type": "CheckError",
+                "message": "The following checks failed:\n" + "\n".join(failed_checks),
+                "traceback": "",
+                "line": 0
+            }
+        else:
+            result["stage"] = "ok"
             
     except Exception as e:
         result["stage"] = "harness_error"

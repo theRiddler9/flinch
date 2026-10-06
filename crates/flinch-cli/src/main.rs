@@ -121,24 +121,19 @@ async fn main() -> anyhow::Result<()> {
                     .run_task(&ep.prompt, spec_str.as_deref(), |_log| async move {})
                     .await?;
 
-                if res.success {
-                    // agent success means it executed without error
-                    if res.attempts.len() == 1 {
-                        executes_at_1 += 1;
-                    }
-
-                    if let Some(last_harness) =
-                        res.attempts.last().and_then(|a| a.harness_result.as_ref())
-                    {
-                        let checks_passed = last_harness.checks.is_empty()
-                            || last_harness.checks.iter().all(|c| c.passed);
-                        if checks_passed {
-                            if res.attempts.len() == 1 {
-                                pass_at_1 += 1;
-                            }
-                            pass_at_3 += 1;
+                if let Some(first) = res.attempts.first() {
+                    if let Some(hr) = &first.harness_result {
+                        if hr.stage != "syntax" && hr.stage != "runtime" && hr.stage != "timeout" {
+                            executes_at_1 += 1;
                         }
                     }
+                }
+
+                if res.success {
+                    if res.attempts.len() == 1 {
+                        pass_at_1 += 1;
+                    }
+                    pass_at_3 += 1;
                 }
 
                 results_json.push(res);

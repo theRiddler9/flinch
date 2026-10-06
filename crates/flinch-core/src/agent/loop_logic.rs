@@ -52,7 +52,7 @@ impl Agent {
         mut log_cb: F,
     ) -> Result<AgentResult>
     where
-        F: FnMut(String) -> Fut + Copy,
+        F: FnMut(String) -> Fut,
         Fut: std::future::Future<Output = ()> + Send,
     {
         let mut messages = vec![
@@ -117,7 +117,7 @@ impl Agent {
                 continue;
             }
 
-            let harness_res = self.runner.run_script(&script, spec, log_cb).await?;
+            let harness_res = self.runner.run_script(&script, spec, &mut log_cb).await?;
 
             attempts_record.push(AttemptRecord {
                 prompt: user_prompt.to_string(),

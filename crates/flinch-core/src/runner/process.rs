@@ -71,20 +71,48 @@ impl Runner {
         let stdout = child.inner().stdout.take().expect("stdout piped");
         let stderr = child.inner().stderr.take().expect("stderr piped");
 
-        let mut out_reader = BufReader::new(stdout).lines();
-        let mut err_reader = BufReader::new(stderr).lines();
+        let (tx, mut rx) = tokio::sync::mpsc::channel(100);
+
+        let tx_out = tx.clone();
+        tokio::spawn(async move {
+            let mut out_reader = BufReader::new(stdout).lines();
+            while let Ok(Some(line)) = out_reader.next_line().await {
+                if tx_out.send(format!("[stdout] {}", line)).await.is_err() {
+                    break;
+                }
+            }
+        });
+
+        let tx_err = tx.clone();
+        tokio::spawn(async move {
+            let mut err_reader = BufReader::new(stderr).lines();
+            while let Ok(Some(line)) = err_reader.next_line().await {
+                if tx_err.send(format!("[stderr] {}", line)).await.is_err() {
+                    break;
+                }
+            }
+        });
+
+        drop(tx);
 
         let run_task = async {
+            let mut child_status = None;
             loop {
                 tokio::select! {
-                    Ok(Some(line)) = out_reader.next_line() => {
-                        log_callback(format!("[stdout] {}", line)).await;
+                    line_opt = rx.recv() => {
+                        match line_opt {
+                            Some(line) => log_callback(line).await,
+                            None => {
+                                if let Some(status) = child_status {
+                                    return status;
+                                } else {
+                                    return child.wait().await;
+                                }
+                            }
+                        }
                     }
-                    Ok(Some(line)) = err_reader.next_line() => {
-                        log_callback(format!("[stderr] {}", line)).await;
-                    }
-                    status = child.wait() => {
-                        return status;
+                    status = child.wait(), if child_status.is_none() => {
+                        child_status = Some(status);
                     }
                 }
             }

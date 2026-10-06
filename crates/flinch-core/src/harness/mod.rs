@@ -35,7 +35,6 @@ pub struct SceneStats {
     pub blender_version: String,
     pub objects: Vec<ObjectStat>,
     pub counts: CountsStat,
-    #[ts(type = "[number, number]")]
     pub frame_range: (i32, i32),
     pub fps: u32,
     pub keyframe_count: u32,
