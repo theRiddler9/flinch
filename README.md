@@ -38,11 +38,20 @@ Requires Rust (version pinned in `rust-toolchain.toml`), Bun 1.x, Blender (the L
 From the repository root:
 
 ```bash
+# 1. Install frontend dependencies
 bun install
+
+# 2. Setup your local config
 cp flinch.example.toml flinch.toml
+
+# 3. Check connectivity and Blender installation
 cargo run -p flinch-cli -- doctor
+
+# 4. Launch the Desktop App (Tauri interface)
 bun run dev
 ```
+
+When you run `bun run dev`, Tauri will automatically compile the Rust backend, start the Vite server for the React UI, and launch the desktop window where you can see the new split-pane interface (Streamed Chat on the left, Monaco Editor on the right).
 
 Set your Blender path and provider in `flinch.toml`. Flinch defaults to Ollama at `http://localhost:11434/v1`; use `base_url` and `model` to point at any OpenAI-compatible provider. API keys are read from an environment variable (CLI) or your OS keychain (desktop app), never from config files. `doctor` checks the Blender version and provider connectivity. See [docs/PROVIDERS.md](docs/PROVIDERS.md) for provider setup.
 

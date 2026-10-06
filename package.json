@@ -5,7 +5,7 @@
     "bindings": "cargo test -p flinch-core",
     "check": "bun run bindings && cargo fmt --all --check && cargo clippy --all-targets -- -D warnings && cargo test --all",
     "eval": "cargo run -p flinch-cli -- eval",
-    "dev": "bun run bindings && bun run --cwd apps/desktop dev",
+    "dev": "bun run bindings && bun run --cwd apps/desktop tauri dev",
     "build": "bun run bindings && bun run --cwd apps/desktop build"
   },
   "workspaces": [
