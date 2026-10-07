@@ -79,9 +79,18 @@ async fn main() -> anyhow::Result<()> {
         Commands::Run { prompt } => {
             let agent = setup_agent()?;
             let res = agent
-                .run_task(&prompt, None, |log| async move {
-                    println!("{}", log);
-                })
+                .run_task(
+                    &prompt,
+                    None,
+                    |log| async move {
+                        println!("{}", log);
+                    },
+                    |token| async move {
+                        use std::io::Write;
+                        print!("{}", token);
+                        let _ = std::io::stdout().flush();
+                    },
+                )
                 .await?;
             println!("Run completed. Success: {}", res.success);
         }
@@ -118,7 +127,12 @@ async fn main() -> anyhow::Result<()> {
                     Some(serde_json::to_string(&ep.checks)?)
                 };
                 let res = agent
-                    .run_task(&ep.prompt, spec_str.as_deref(), |_log| async move {})
+                    .run_task(
+                        &ep.prompt,
+                        spec_str.as_deref(),
+                        |_log| async move {},
+                        |_token| async move {},
+                    )
                     .await?;
 
                 if let Some(first) = res.attempts.first() {

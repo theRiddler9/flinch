@@ -45,15 +45,18 @@ impl Agent {
         }
     }
 
-    pub async fn run_task<F, Fut>(
+    pub async fn run_task<F, Fut1, T, Fut2>(
         &self,
         user_prompt: &str,
         spec: Option<&str>,
         mut log_cb: F,
+        mut token_cb: T,
     ) -> Result<AgentResult>
     where
-        F: FnMut(String) -> Fut,
-        Fut: std::future::Future<Output = ()> + Send,
+        F: FnMut(String) -> Fut1,
+        Fut1: std::future::Future<Output = ()> + Send,
+        T: FnMut(String) -> Fut2,
+        Fut2: std::future::Future<Output = ()> + Send,
     {
         let mut messages = vec![
             ChatMessage {
@@ -87,8 +90,7 @@ impl Agent {
                 match chunk_res {
                     Ok(chunk) => {
                         raw_response.push_str(&chunk.content);
-                        // Optional: stream to UI
-                        // log_cb(chunk.content).await;
+                        token_cb(chunk.content).await;
                     }
                     Err(e) => {
                         let err_msg = format!("Network or provider error: {}", e);

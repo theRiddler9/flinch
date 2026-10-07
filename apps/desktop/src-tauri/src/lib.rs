@@ -51,9 +51,19 @@ async fn run_prompt(
         }
     };
 
+    let token_cb = {
+        let app = app_handle.clone();
+        move |token: String| {
+            let app = app.clone();
+            async move {
+                let _ = app.emit("agent://token", LogEvent { message: token });
+            }
+        }
+    };
+
     let agent = state.agent.read().await;
     let result = agent
-        .run_task(&prompt, None, log_cb)
+        .run_task(&prompt, None, log_cb, token_cb)
         .await
         .map_err(|e| e.to_string())?;
 
