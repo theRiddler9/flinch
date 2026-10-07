@@ -25,6 +25,25 @@ export interface QueueEntry {
   thumb?: string;
 }
 
+export interface SystemMetrics {
+  cpu_percent: number;
+  cpu_cores: number;
+  cpu_brand: string;
+  ram_used_gb: number;
+  ram_total_gb: number;
+  ram_percent: number;
+  gpu_name: string | null;
+  gpu_percent: number | null;
+  vram_used_gb: number | null;
+  vram_total_gb: number | null;
+  vram_percent: number | null;
+  disk_read_mbps: number;
+  disk_write_mbps: number;
+  disk_used_gb: number;
+  disk_total_gb: number;
+  disk_percent: number;
+}
+
 interface RunState {
   prompt: string;
   isRunning: boolean;
@@ -40,6 +59,7 @@ interface RunState {
   doctorStatus: 'checking' | 'ok' | 'error';
   blenderVersion: string | null;
   providerOnline: boolean;
+  systemMetrics: SystemMetrics | null;
 
   theme: 'system' | 'dark' | 'light';
   fontSize: number;
@@ -59,6 +79,7 @@ interface RunState {
   setActiveAttempt: (index: number) => void;
   appendLog: (log: string) => void;
   loadHistory: () => Promise<void>;
+  fetchMetrics: () => Promise<void>;
 }
 
 export const useStore = create<RunState>((set, get) => ({
@@ -80,6 +101,7 @@ export const useStore = create<RunState>((set, get) => ({
   fontSize: 13,
   enginePreset: 'eevee',
   executionQueue: [],
+  systemMetrics: null,
 
   setTheme: (theme) => set({ theme }),
   setFontSize: (fontSize) => set({ fontSize }),
@@ -185,6 +207,15 @@ export const useStore = create<RunState>((set, get) => ({
       set({ history });
     } catch (e) {
       console.error(e);
+    }
+  },
+
+  fetchMetrics: async () => {
+    try {
+      const metrics = await invoke<SystemMetrics>('get_system_metrics');
+      set({ systemMetrics: metrics });
+    } catch (e) {
+      console.error('Failed to fetch system metrics:', e);
     }
   },
 }));
