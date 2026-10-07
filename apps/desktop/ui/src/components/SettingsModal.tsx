@@ -7,9 +7,8 @@ import { useStore } from '../state/useStore';
 
 export const SettingsSchema = z.object({
   blender_bin: z.string().min(1, 'Blender path is required'),
-  provider_kind: z.string().default('openai_compatible'),
-  provider_base_url: z.string().url('Must be a valid URL (e.g., http://localhost:11434/v1)'),
-  provider_model: z.string().min(1, 'Model name is required'),
+  base_url: z.string().url('Must be a valid URL (e.g., http://localhost:11434/v1)'),
+  model: z.string().min(1, 'Model name is required'),
   api_key: z.string().optional(),
 });
 
@@ -26,9 +25,8 @@ export function SettingsModal({
 }) {
   const [settings, setSettings] = useState<Settings>({
     blender_bin: 'blender',
-    provider_kind: 'openai_compatible',
-    provider_base_url: 'http://localhost:11434/v1',
-    provider_model: 'qwen3.5:9b',
+    base_url: 'http://localhost:11434/v1',
+    model: 'qwen3.5:9b',
     api_key: '',
   });
 
@@ -108,9 +106,9 @@ export function SettingsModal({
 
         {/* Success Toast */}
         {saveSuccess && (
-          <div className="absolute top-16 left-1/2 -translate-x-1/2 bg-white px-4 py-2 rounded-full shadow-lg border border-gray-200 flex items-center gap-2 z-50 flinch-slide-in">
-            <CheckCircle2 size={16} className="text-green-500" />
-            <span className="text-sm font-medium text-black">Configuration saved successfully</span>
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-flinch-success px-4 py-2 rounded-full shadow-lg flex items-center gap-2 z-50 flinch-slide-in">
+            <CheckCircle2 size={16} className="text-white" />
+            <span className="text-sm font-medium text-white">Configuration saved successfully</span>
           </div>
         )}
 
@@ -179,25 +177,25 @@ export function SettingsModal({
                       <label className="text-sm font-medium text-flinch-text-dim">API Provider URL</label>
                       <input
                         type="text"
-                        className={cn("w-full bg-flinch-deep border rounded px-3 py-2.5 text-sm text-flinch-text outline-none flinch-transition", errors.provider_base_url ? "border-flinch-error focus:border-flinch-error" : "border-flinch-border focus:border-flinch-text-muted")}
-                        value={settings.provider_base_url}
-                        onChange={(e) => setSettings({ ...settings, provider_base_url: e.target.value })}
+                        className={cn("w-full bg-flinch-deep border rounded px-3 py-2.5 text-sm text-flinch-text outline-none flinch-transition", errors.base_url ? "border-flinch-error focus:border-flinch-error" : "border-flinch-border focus:border-flinch-text-muted")}
+                        value={settings.base_url}
+                        onChange={(e) => setSettings({ ...settings, base_url: e.target.value })}
                         placeholder="http://localhost:11434/v1"
                       />
                       <p className="text-xs text-flinch-text-muted">Use standard OpenAI-compatible endpoints (Ollama, Groq, OpenRouter, Google AI Studio)</p>
-                      {errors.provider_base_url && <div className="text-xs text-flinch-error mt-1">{errors.provider_base_url}</div>}
+                      {errors.base_url && <div className="text-xs text-flinch-error mt-1">{errors.base_url}</div>}
                     </div>
 
                     <div className="space-y-1.5">
                       <label className="text-sm font-medium text-flinch-text-dim">Model Name</label>
                       <input
                         type="text"
-                        className={cn("w-full bg-flinch-deep border rounded px-3 py-2.5 text-sm text-flinch-text outline-none flinch-transition", errors.provider_model ? "border-flinch-error focus:border-flinch-error" : "border-flinch-border focus:border-flinch-text-muted")}
-                        value={settings.provider_model}
-                        onChange={(e) => setSettings({ ...settings, provider_model: e.target.value })}
+                        className={cn("w-full bg-flinch-deep border rounded px-3 py-2.5 text-sm text-flinch-text outline-none flinch-transition", errors.model ? "border-flinch-error focus:border-flinch-error" : "border-flinch-border focus:border-flinch-text-muted")}
+                        value={settings.model}
+                        onChange={(e) => setSettings({ ...settings, model: e.target.value })}
                         placeholder="qwen3.5:9b"
                       />
-                      {errors.provider_model && <div className="text-xs text-flinch-error mt-1">{errors.provider_model}</div>}
+                      {errors.model && <div className="text-xs text-flinch-error mt-1">{errors.model}</div>}
                     </div>
 
                     <div className="space-y-1.5">
