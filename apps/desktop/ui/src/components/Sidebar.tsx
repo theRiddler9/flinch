@@ -4,7 +4,7 @@ import type { EnginePreset } from '../state/useStore';
 import {
   Clock, CheckCircle as CheckCircle2, WarningCircle as AlertCircle, Cube as Box, Sparkle as Sparkles, Gear as Settings2,
   CaretDown as ChevronDown, CaretRight as ChevronRight, Lightning as Zap, Stack as Layers, Sun, Pulse,
-  RadioButton as CircleDot, SpinnerGap as Loader2, XCircle, Cpu, HardDrives as HardDrive, Gauge, ArrowSquareOut
+  RadioButton as CircleDot, SpinnerGap as Loader2, XCircle, Cpu, HardDrives as HardDrive, Gauge, ArrowSquareOut, Trash
 } from '@phosphor-icons/react';
 import { invoke } from '@tauri-apps/api/core';
 import type { AgentResult } from '../bindings/AgentResult';
@@ -58,11 +58,15 @@ export function Sidebar() {
   const loadSession = useCallback(async (id: string) => {
     try {
       const result = await invoke<AgentResult>('get_session', { sessionId: id });
+      const userPrompt = result.attempts.length > 0 ? result.attempts[0].prompt : id;
       useStore.setState({
         finalResult: result,
         attempts: result.attempts,
         activeAttemptIndex: Math.max(0, result.attempts.length - 1),
-        messages: [{ id: Date.now().toString(), role: 'assistant', content: 'Loaded historical session.' }],
+        messages: [
+          { id: Date.now().toString(), role: 'user', content: userPrompt },
+          { id: (Date.now() + 1).toString(), role: 'assistant', content: result.success ? '✨ Script executed successfully!' : '❌ Script failed after all attempts.' }
+        ],
       });
     } catch (e) {
       console.error(e);
@@ -310,28 +314,51 @@ export function Sidebar() {
           </div>
           <div className="mt-1 space-y-0.5">
             {history.map((session, i) => (
-              <button
+              <div
                 key={session.id}
-                onClick={() => loadSession(session.id)}
                 className={cn(
-                  "w-full text-left px-2.5 py-2 rounded-md flinch-transition flinch-focus-ring group",
+                  "relative w-full text-left px-2.5 py-2 rounded-md flinch-transition group",
                   "hover:bg-flinch-surface/60",
                   i === 0 && "flinch-slide-in"
                 )}
                 style={{ animationDelay: `${Math.min(i * 30, 300)}ms` }}
               >
-                <div className="flex items-center gap-2 mb-0.5">
-                  {session.success
-                    ? <CheckCircle2 size={10} className="text-flinch-success shrink-0" />
-                    : <AlertCircle size={10} className="text-flinch-error shrink-0" />}
-                  <span className="text-2xs text-flinch-text-muted truncate flex-1">
-                    {formatRelativeTime(session.created_at)}
-                  </span>
-                </div>
-                <div className="text-[12px] text-flinch-text-dim group-hover:text-flinch-text flinch-transition line-clamp-2 leading-snug">
-                  {session.prompt}
-                </div>
-              </button>
+                <button
+                  onClick={() => loadSession(session.id)}
+                  className="w-full text-left flinch-focus-ring pr-6"
+                >
+                  <div className="flex items-center gap-2 mb-0.5">
+                    {session.success
+                      ? <CheckCircle2 size={10} className="text-flinch-success shrink-0" />
+                      : <AlertCircle size={10} className="text-flinch-error shrink-0" />}
+                    <span className="text-2xs text-flinch-text-muted truncate flex-1">
+                      {formatRelativeTime(session.created_at)}
+                    </span>
+                  </div>
+                  <div className="text-[12px] text-flinch-text-dim group-hover:text-flinch-text flinch-transition line-clamp-2 leading-snug">
+                    {session.prompt}
+                  </div>
+                </button>
+                <button
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    try {
+                      await invoke('delete_session', { sessionId: session.id });
+                      loadHistory();
+                      useStore.setState({
+                        messages: [], attempts: [], activeAttemptIndex: 0,
+                        finalResult: null, error: null, logs: [], prompt: '',
+                      });
+                    } catch (err) {
+                      console.error("Failed to delete session", err);
+                    }
+                  }}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 opacity-0 group-hover:opacity-100 hover:bg-flinch-error/20 hover:text-flinch-error text-flinch-text-muted rounded-md flinch-transition"
+                  title="Delete Session"
+                >
+                  <Trash size={12} />
+                </button>
+              </div>
             ))}
             {history.length === 0 && (
               <div className="text-center py-6 text-flinch-text-muted text-xs">

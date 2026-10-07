@@ -188,7 +188,7 @@ async fn render_frame(
 
     let harness_path = resolve_workspace_path("blender/harness.py");
 
-    let output = tokio::process::Command::new(&blender_bin)
+    let output_result = tokio::process::Command::new(&blender_bin)
         .arg("-b")
         .arg("--factory-startup")
         .arg("--python-exit-code")
@@ -207,11 +207,12 @@ async fn render_frame(
         .arg("--engine")
         .arg(&engine)
         .output()
-        .await
-        .map_err(|e| format!("Failed to spawn blender: {}", e))?;
+        .await;
 
     let _ = std::fs::remove_file(&script_path);
     let _ = std::fs::remove_file(&result_path);
+
+    let output = output_result.map_err(|e| format!("Failed to spawn blender: {}", e))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -245,6 +246,12 @@ async fn get_session(
 ) -> Result<AgentResult, String> {
     let store = state.store.lock().unwrap();
     store.get_session(&session_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn delete_session(state: State<'_, Arc<AppState>>, session_id: String) -> Result<(), String> {
+    let store = state.store.lock().unwrap();
+    store.delete_session(&session_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -720,6 +727,7 @@ pub fn run() {
             check_blender,
             list_sessions,
             get_session,
+            delete_session,
             export_blend,
             export_script,
             export_preview,

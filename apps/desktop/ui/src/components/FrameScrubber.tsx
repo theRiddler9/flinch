@@ -120,7 +120,7 @@ export function FrameScrubber({ script, frameRange }: FrameScrubberProps) {
           <div className="flex flex-col items-center gap-2 text-flinch-error p-4 text-center max-w-sm">
             <AlertCircle size={22} />
             <span className="text-xs font-semibold">Frame Render Error</span>
-            <span className="text-2xs font-mono text-flinch-text-muted break-all max-h-24 overflow-y-auto">{error}</span>
+            <div className="text-2xs font-mono text-flinch-text-muted whitespace-pre-wrap break-all max-h-24 overflow-y-auto w-full text-left p-2 bg-black/20 rounded">{error}</div>
             <button
               onClick={() => renderFrame(frame)}
               className="mt-2 px-3 py-1 bg-flinch-surface text-flinch-text text-2xs rounded border border-flinch-border hover:bg-flinch-surface/80"

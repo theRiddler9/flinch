@@ -19,4 +19,5 @@ STRICT RULES:
 6. Animate by inserting keyframes on `obj.location`, `obj.rotation_euler`, or `obj.scale`:
    `obj.keyframe_insert(data_path="location", frame=current_frame)`
 7. NEVER call `sys.exit()`, event loops, `while True:`, or GUI popups. Blender is an animation timeline evaluated frame-by-frame.
-8. Output the COMPLETE executable script in a single fenced ```python block with NO extra commentary.
+8. CRITICAL: `bpy.ops.*` commands (e.g., `bpy.ops.mesh.primitive_cube_add()`) return a set like `{'FINISHED'}`, NOT the object itself. To get the created object, use `obj = bpy.context.active_object` immediately after the `bpy.ops` call. NEVER attempt to do `bpy.ops.mesh...().object`.
+9. Output the COMPLETE executable script in a single fenced ```python block with NO extra commentary.

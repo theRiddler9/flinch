@@ -117,4 +117,12 @@ impl Store {
 
         Ok(AgentResult { success, attempts })
     }
+
+    pub fn delete_session(&self, session_id: &str) -> SqlResult<()> {
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute("DELETE FROM attempts WHERE session_id = ?1", [session_id])?;
+        tx.execute("DELETE FROM sessions WHERE id = ?1", [session_id])?;
+        tx.commit()?;
+        Ok(())
+    }
 }
