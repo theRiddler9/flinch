@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { z } from 'zod';
 import { invoke } from '@tauri-apps/api/core';
-import { Settings2, Save, X, AlertCircle, Monitor, Box, Paintbrush, CheckCircle2 } from 'lucide-react';
+import { Gear as Settings2, FloppyDisk as Save, X, WarningCircle as AlertCircle, Monitor, Cube as Box, PaintBrush as Paintbrush, CheckCircle as CheckCircle2 } from '@phosphor-icons/react';
 import { cn } from '../lib/utils';
 import { useStore } from '../state/useStore';
 

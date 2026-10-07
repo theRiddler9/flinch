@@ -2,10 +2,11 @@ import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { tempDir, join } from '@tauri-apps/api/path';
 import {
   Play, Pause, SkipBack, SkipForward,
-  AlertCircle, Loader2, Sparkles, RefreshCw,
-} from 'lucide-react';
+  WarningCircle as AlertCircle, SpinnerGap as Loader2, Sparkle as Sparkles, ArrowsClockwise as RefreshCw,
+} from '@phosphor-icons/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { cn } from '../lib/utils';
+import { useStore } from '../state/useStore';
 
 interface FrameScrubberProps {
   script: string;
@@ -32,7 +33,8 @@ export function FrameScrubber({ script, frameRange }: FrameScrubberProps) {
     try {
       const tDir = await tempDir();
       const outPath = await join(tDir, `flinch_frame_${f}.png`);
-      await invoke('render_frame', { script, frame: f, outPath });
+      const engine = useStore.getState().enginePreset;
+      await invoke('render_frame', { script, frame: f, outPath, engine });
       setPreviewSrc(convertFileSrc(outPath) + `?t=${Date.now()}`);
     } catch (e: any) {
       setError(String(e));

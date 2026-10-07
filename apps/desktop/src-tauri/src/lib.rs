@@ -175,6 +175,7 @@ async fn render_frame(
     script: String,
     frame: i32,
     out_path: String,
+    engine: String,
 ) -> Result<(), String> {
     let tmp = std::env::temp_dir();
     let script_path = tmp.join(format!("flinch_frame_{}.py", frame));
@@ -203,6 +204,8 @@ async fn render_frame(
         .arg(&out_path)
         .arg("--frame")
         .arg(frame.to_string())
+        .arg("--engine")
+        .arg(&engine)
         .output()
         .await
         .map_err(|e| format!("Failed to spawn blender: {}", e))?;
@@ -498,6 +501,30 @@ async fn collect_system_metrics(
 }
 
 #[tauri::command]
+async fn open_in_blender(script: String) -> Result<(), String> {
+    let settings = get_settings().await?;
+    let bin = resolve_blender_binary(&settings.blender_bin);
+
+    let tmp_dir = std::env::temp_dir().join("flinch_open");
+    std::fs::create_dir_all(&tmp_dir).map_err(|e| e.to_string())?;
+
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_micros();
+    let script_path = tmp_dir.join(format!("open_{}.py", ts));
+    std::fs::write(&script_path, script).map_err(|e| e.to_string())?;
+
+    std::process::Command::new(&bin)
+        .arg("--python")
+        .arg(&script_path)
+        .spawn()
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
 async fn get_system_metrics(state: State<'_, Arc<AppState>>) -> Result<SystemMetrics, String> {
     let metrics = state.metrics.read().await.clone();
     Ok(metrics)
@@ -691,6 +718,7 @@ pub fn run() {
             export_blend,
             export_script,
             export_preview,
+            open_in_blender,
             render_frame,
             get_system_metrics,
             get_settings,

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, type FormEvent } from 'react';
 import { useStore } from '../state/useStore';
-import { Send, Square, Terminal, Loader2 } from 'lucide-react';
+import { PaperPlaneRight as Send, Stop as Square, TerminalWindow as Terminal, SpinnerGap as Loader2 } from '@phosphor-icons/react';
 import { cn } from '../lib/utils';
 
 export function ChatPanel() {

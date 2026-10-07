@@ -2,10 +2,10 @@ import { useEffect, useCallback, useState } from 'react';
 import { useStore } from '../state/useStore';
 import type { EnginePreset } from '../state/useStore';
 import {
-  Clock, CheckCircle2, AlertCircle, Box, Sparkles, Settings2,
-  ChevronDown, ChevronRight, Zap, Layers, Sun, Activity,
-  CircleDot, Loader2, XCircle, Cpu, HardDrive, Gauge,
-} from 'lucide-react';
+  Clock, CheckCircle as CheckCircle2, WarningCircle as AlertCircle, Cube as Box, Sparkle as Sparkles, Gear as Settings2,
+  CaretDown as ChevronDown, CaretRight as ChevronRight, Lightning as Zap, Stack as Layers, Sun, Activity,
+  RadioButton as CircleDot, SpinnerGap as Loader2, XCircle, Cpu, HardDrives as HardDrive, Gauge, ArrowSquareOut
+} from '@phosphor-icons/react';
 import { invoke } from '@tauri-apps/api/core';
 import type { AgentResult } from '../bindings/AgentResult';
 import { cn } from '../lib/utils';
@@ -16,11 +16,6 @@ const ENGINE_OPTIONS: { id: EnginePreset; label: string; desc: string }[] = [
   { id: 'cycles_prod', label: 'Cycles Prod',     desc: 'Full quality' },
 ];
 
-function StatusDot({ status }: { status: 'checking' | 'ok' | 'error' }) {
-  if (status === 'checking') return <span className="w-2 h-2 rounded-full bg-flinch-warning animate-pulse inline-block" />;
-  if (status === 'ok')       return <span className="w-2 h-2 rounded-full bg-flinch-success inline-block" />;
-  return <span className="w-2 h-2 rounded-full bg-flinch-error inline-block" />;
-}
 
 export function Sidebar() {
   const history        = useStore((s) => s.history);
@@ -144,17 +139,13 @@ export function Sidebar() {
           </button>
           {envOpen && (
             <div className="mt-1.5 space-y-2 pl-1 bg-flinch-surface/20 p-2 rounded-lg border border-flinch-border-dim/50">
-              {/* Blender Status */}
-              <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center justify-between text-xs mb-1">
                 <div className="flex items-center gap-1.5 truncate">
-                  <Box size={11} className={cn("shrink-0", doctorStatus === 'ok' ? "text-flinch-success" : "text-flinch-error")} />
+                  <Activity size={13} className="text-flinch-success shrink-0" weight="bold" />
                   <span className="text-flinch-text font-medium truncate">
-                    {blenderVersion ?? (doctorStatus === 'error' ? 'Blender Not Found' : 'Checking...')}
+                    Performance Metrics
                   </span>
                 </div>
-                <span className={cn("text-2xs font-semibold uppercase px-1.5 py-0.2 rounded", doctorStatus === 'ok' ? "bg-flinch-success/15 text-flinch-success" : "bg-flinch-error/15 text-flinch-error")}>
-                  {doctorStatus === 'ok' ? 'Ready' : 'Fix'}
-                </span>
               </div>
 
               {/* CPU Metric */}
@@ -356,24 +347,25 @@ export function Sidebar() {
       <div className="p-2 border-t border-flinch-border-dim space-y-0.5 shrink-0">
         <button
           className="w-full flex items-center justify-between px-3 py-2 rounded-md text-sm text-flinch-text-dim hover:text-flinch-text hover:bg-flinch-surface/60 flinch-transition group"
-          onClick={() => {
-            useStore.setState({ doctorStatus: 'checking' });
-            invoke<{ blender_ok: boolean; blender_version: string | null; provider_ok: boolean }>('check_doctor')
-              .then((res) => {
-                useStore.setState({
-                  doctorStatus: (res.blender_ok && res.provider_ok) ? 'ok' : 'error',
-                  blenderVersion: res.blender_version ?? null,
-                  providerOnline: res.provider_ok,
-                });
-              })
-              .catch(() => useStore.setState({ doctorStatus: 'error' }));
+          onClick={async () => {
+            const state = useStore.getState();
+            const result = state.finalResult;
+            if (result && result.attempts.length > 0) {
+              const latestAttempt = result.attempts[state.activeAttemptIndex ?? result.attempts.length - 1];
+              if (latestAttempt && latestAttempt.script) {
+                try {
+                  await invoke('open_in_blender', { script: latestAttempt.script });
+                } catch (e) {
+                  console.error("Failed to open in Blender:", e);
+                }
+              }
+            }
           }}
         >
           <div className="flex items-center gap-2">
-            <Box size={14} className="group-hover:text-flinch-accent flinch-transition" />
-            <span>Connect to Blender</span>
+            <ArrowSquareOut size={14} className="group-hover:text-flinch-accent flinch-transition" />
+            <span>Open in Blender</span>
           </div>
-          <StatusDot status={doctorStatus} />
         </button>
 
         <button
@@ -381,7 +373,7 @@ export function Sidebar() {
           className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm text-flinch-text-dim hover:text-flinch-text hover:bg-flinch-surface/60 flinch-transition group"
         >
           <Settings2 size={14} className="group-hover:text-flinch-text flinch-transition" />
-          <span>Settings & Theme</span>
+          <span>Settings</span>
         </button>
       </div>
     </div>

@@ -1,10 +1,10 @@
 import { useStore } from '../state/useStore';
 import { Editor, DiffEditor } from '@monaco-editor/react';
 import {
-  AlertCircle, CheckCircle2, Download, FileCode,
-  ChevronDown, ChevronRight, Copy, Code2, Sparkles,
+  WarningCircle as AlertCircle, CheckCircle as CheckCircle2, DownloadSimple as Download, FileCode,
+  CaretDown as ChevronDown, CaretRight as ChevronRight, Copy, Code as Code2, Sparkle as Sparkles,
   Columns, PlaySquare,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import { invoke } from '@tauri-apps/api/core';
 import { tempDir, join } from '@tauri-apps/api/path';
 import { save } from '@tauri-apps/plugin-dialog';

@@ -97,6 +97,7 @@ def main():
     parser.add_argument("--save-blend", required=False, help="Path to save the .blend file")
     parser.add_argument("--render-image", required=False, help="Path to save a rendered image frame")
     parser.add_argument("--frame", type=int, required=False, help="Specific frame number to evaluate and render")
+    parser.add_argument("--engine", required=False, default="eevee", help="Engine preset (eevee, cycles_fast, cycles_prod)")
     
     # In Blender, sys.argv includes the blender executable and --, so we slice it
     if "--" in sys.argv:
@@ -227,7 +228,25 @@ def main():
                 img_dest = os.path.abspath(args.render_image)
                 os.makedirs(os.path.dirname(img_dest), exist_ok=True)
                 bpy.context.scene.render.filepath = img_dest
-                bpy.context.scene.render.engine = 'BLENDER_WORKBENCH'
+                
+                # Apply engine preset
+                if args.engine == "cycles_fast":
+                    bpy.context.scene.render.engine = 'CYCLES'
+                    bpy.context.scene.cycles.samples = 16
+                    bpy.context.scene.cycles.use_denoising = True
+                elif args.engine == "cycles_prod":
+                    bpy.context.scene.render.engine = 'CYCLES'
+                    bpy.context.scene.cycles.samples = 128
+                    bpy.context.scene.cycles.use_denoising = True
+                elif args.engine == "eevee":
+                    # Try EEVEE_NEXT for newer Blender versions, fallback to BLENDER_EEVEE
+                    try:
+                        bpy.context.scene.render.engine = 'BLENDER_EEVEE_NEXT'
+                    except TypeError:
+                        bpy.context.scene.render.engine = 'BLENDER_EEVEE'
+                else:
+                    bpy.context.scene.render.engine = 'BLENDER_WORKBENCH'
+
                 bpy.ops.render.render(write_still=True)
             
     except Exception as e:
