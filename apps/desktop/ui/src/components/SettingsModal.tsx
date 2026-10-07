@@ -69,6 +69,18 @@ export function SettingsModal({
       
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
+
+      // Re-run doctor to update status in Sidebar
+      useStore.setState({ doctorStatus: 'checking' });
+      invoke<{ blender_ok: boolean; blender_version: string | null; provider_ok: boolean }>('check_doctor')
+        .then((res) => {
+          useStore.setState({
+            doctorStatus: (res.blender_ok && res.provider_ok) ? 'ok' : 'error',
+            blenderVersion: res.blender_version ?? null,
+            providerOnline: res.provider_ok,
+          });
+        })
+        .catch(() => useStore.setState({ doctorStatus: 'error' }));
       
     } catch (e) {
       if (e instanceof z.ZodError) {
