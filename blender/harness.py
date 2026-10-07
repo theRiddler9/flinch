@@ -34,7 +34,14 @@ def get_action_fcurves(action):
 
 def collect_scene_stats():
     if not HAS_BPY:
-        return {}
+        return {
+            "blender_version": "Unknown",
+            "objects": [],
+            "counts": {"mesh": 0, "light": 0, "camera": 0, "grease_pencil": 0},
+            "frame_range": [1, 250],
+            "fps": 24,
+            "keyframe_count": 0
+        }
     
     stats = {
         "blender_version": ".".join(map(str, bpy.app.version)),

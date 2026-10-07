@@ -1,9 +1,0 @@
-[blender]
-bin = "C:\\Program Files\\Blender Foundation\\Blender 5.2\\blender.exe"
-
-[provider]
-kind = "openai_compatible"
-base_url = "http://localhost:11434/v1"
-model = "qwen3.5:9b"
-api_key_env = ""
-max_concurrency = 1

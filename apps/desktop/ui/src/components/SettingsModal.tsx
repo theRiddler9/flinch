@@ -91,6 +91,7 @@ export function SettingsModal({
           }
         });
         setErrors(fieldErrors);
+        setSaveError("Validation failed. Please check the fields.");
       } else {
         setSaveError(String(e));
       }
@@ -118,7 +119,7 @@ export function SettingsModal({
 
         {/* Success Toast */}
         {saveSuccess && (
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-flinch-success px-4 py-2 rounded-full shadow-lg flex items-center gap-2 z-50 flinch-slide-in">
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-green-600 px-4 py-2 rounded-full shadow-lg flex items-center gap-2 z-50 flinch-slide-in">
             <CheckCircle2 size={16} className="text-white" />
             <span className="text-sm font-medium text-white">Configuration saved successfully</span>
           </div>
@@ -150,9 +151,9 @@ export function SettingsModal({
           {/* Body content */}
           <div className="flex-1 p-6 overflow-y-auto bg-flinch-base">
             {saveError && (
-              <div className="mb-4 p-3 text-xs bg-flinch-error/10 border border-flinch-error/20 rounded text-flinch-error flex items-start gap-2">
-                <AlertCircle size={14} className="mt-0.5 shrink-0" />
-                <span>{saveError}</span>
+              <div className="mb-4 p-4 text-sm font-bold bg-red-100 border border-red-500 rounded text-red-700 flex items-start gap-2 shadow-sm">
+                <AlertCircle size={18} className="mt-0.5 shrink-0" />
+                <span>Error saving settings: {saveError}</span>
               </div>
             )}
 

@@ -586,15 +586,20 @@ async fn check_doctor() -> Result<DoctorResult, String> {
 
 fn resolve_workspace_path(path: &str) -> PathBuf {
     if let Ok(mut dir) = std::env::current_dir() {
+        let mut best_dir = dir.clone();
         loop {
             let candidate = dir.join(path);
             if candidate.exists() {
                 return candidate;
             }
+            if dir.join("Cargo.toml").exists() && dir.join("bunfig.toml").exists() {
+                best_dir = dir.clone();
+            }
             if !dir.pop() {
                 break;
             }
         }
+        return best_dir.join(path);
     }
     if let Ok(mut exe) = std::env::current_exe() {
         loop {
