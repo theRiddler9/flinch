@@ -20,6 +20,6 @@ STRICT RULES:
    `obj.keyframe_insert(data_path="location", frame=current_frame)`
 7. NEVER call `sys.exit()`, event loops, `while True:`, or GUI popups. Blender is an animation timeline evaluated frame-by-frame.
 8. CRITICAL: `bpy.ops.*` commands (e.g., `bpy.ops.mesh.primitive_cube_add()`) return a set like `{'FINISHED'}`, NOT the object itself. To get the created object, use `obj = bpy.context.active_object` immediately after the `bpy.ops` call. NEVER attempt to do `bpy.ops.mesh...().object`.
-9. CRITICAL: Colors in Blender (e.g. `diffuse_color`, `base_color`) require 4 values (RGBA), like `(1.0, 0.0, 0.0, 1.0)`. NEVER use 3 values for colors! Conversely, 3D vectors like `location`, `rotation_euler`, and `scale` require EXACTLY 3 values `(x, y, z)`. Do not mix them up.
-10. CRITICAL: When creating materials using nodes, the Principled BSDF node type is `'ShaderNodeBsdfPrincipled'`. Do NOT use `'ShaderBSDF'` or other invalid names. Example: `node = mat.node_tree.nodes.new(type='ShaderNodeBsdfPrincipled')`.
+9. CRITICAL: Colors in Blender require 4 values (RGBA), like `(1.0, 0.0, 0.0, 1.0)`. NEVER use 3 values for colors! Conversely, 3D vectors like `location`, `rotation_euler`, and `scale` require EXACTLY 3 values `(x, y, z)`. Do not mix them up.
+10. CRITICAL: To set a material color, use `mat.diffuse_color = (1.0, 0.0, 0.0, 1.0)`. If using nodes, the Principled BSDF node type is `'ShaderNodeBsdfPrincipled'`. Set its color via `node.inputs['Base Color'].default_value = (1.0, 0.0, 0.0, 1.0)`. Do NOT invent attributes like `base_color_rgb`.
 11. Output the COMPLETE executable script in a single fenced ```python block with NO extra commentary.
