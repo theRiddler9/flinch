@@ -13,10 +13,54 @@ struct LogEvent {
     message: String,
 }
 
+#[derive(serde::Serialize, Clone, Debug)]
+pub struct SystemMetrics {
+    pub cpu_percent: f32,
+    pub cpu_cores: usize,
+    pub cpu_brand: String,
+    pub ram_used_gb: f32,
+    pub ram_total_gb: f32,
+    pub ram_percent: f32,
+    pub gpu_name: Option<String>,
+    pub gpu_percent: Option<f32>,
+    pub vram_used_gb: Option<f32>,
+    pub vram_total_gb: Option<f32>,
+    pub vram_percent: Option<f32>,
+    pub disk_read_mbps: f32,
+    pub disk_write_mbps: f32,
+    pub disk_used_gb: f32,
+    pub disk_total_gb: f32,
+    pub disk_percent: f32,
+}
+
+impl Default for SystemMetrics {
+    fn default() -> Self {
+        Self {
+            cpu_percent: 0.0,
+            cpu_cores: 0,
+            cpu_brand: "CPU".to_string(),
+            ram_used_gb: 0.0,
+            ram_total_gb: 0.0,
+            ram_percent: 0.0,
+            gpu_name: None,
+            gpu_percent: None,
+            vram_used_gb: None,
+            vram_total_gb: None,
+            vram_percent: None,
+            disk_read_mbps: 0.0,
+            disk_write_mbps: 0.0,
+            disk_used_gb: 0.0,
+            disk_total_gb: 0.0,
+            disk_percent: 0.0,
+        }
+    }
+}
+
 struct AppState {
     agent: RwLock<Agent>,
     runner: RwLock<Runner>,
     store: std::sync::Mutex<Store>,
+    metrics: Arc<RwLock<SystemMetrics>>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -139,15 +183,17 @@ async fn render_frame(
 
     let runner = state.runner.read().await;
     // Use the runner's blender bin directly for a frame render
-    let blender_bin = runner.blender_bin();
+    let blender_bin = resolve_blender_binary(runner.blender_bin());
 
-    let output = tokio::process::Command::new(blender_bin)
+    let harness_path = resolve_workspace_path("blender/harness.py");
+
+    let output = tokio::process::Command::new(&blender_bin)
         .arg("-b")
         .arg("--factory-startup")
         .arg("--python-exit-code")
         .arg("1")
         .arg("--python")
-        .arg("blender/harness.py")
+        .arg(&harness_path)
         .arg("--")
         .arg("--script")
         .arg(&script_path)
@@ -155,6 +201,8 @@ async fn render_frame(
         .arg(&result_path)
         .arg("--render-image")
         .arg(&out_path)
+        .arg("--frame")
+        .arg(frame.to_string())
         .output()
         .await
         .map_err(|e| format!("Failed to spawn blender: {}", e))?;
@@ -216,8 +264,10 @@ async fn get_settings() -> Result<AppSettings, String> {
         Err(_) => "".to_string(),
     };
 
+    let resolved_blender_bin = resolve_blender_binary(&blender_bin);
+
     Ok(AppSettings {
-        blender_bin,
+        blender_bin: resolved_blender_bin,
         base_url,
         model,
         api_key,
@@ -229,6 +279,8 @@ async fn save_settings(
     state: State<'_, Arc<AppState>>,
     settings: AppSettings,
 ) -> Result<(), String> {
+    let resolved_bin = resolve_blender_binary(&settings.blender_bin);
+
     // Save to keyring
     if let Ok(entry) = keyring::Entry::new("flinch", "api_key") {
         let _ = entry.set_password(&settings.api_key);
@@ -237,7 +289,7 @@ async fn save_settings(
     // Save to flinch.toml
     let config = flinch_core::config::AppConfig {
         blender: flinch_core::config::BlenderConfig {
-            bin: settings.blender_bin.clone(),
+            bin: resolved_bin.clone(),
         },
         provider: flinch_core::config::ProviderConfig {
             kind: "openai_compatible".to_string(),
@@ -255,7 +307,7 @@ async fn save_settings(
     // Update agent and runner
     let provider = OpenAiCompatProvider::new(settings.base_url, settings.model, settings.api_key);
     let runner_new = Runner::new(RunnerConfig {
-        blender_bin: settings.blender_bin.clone(),
+        blender_bin: resolved_bin.clone(),
         timeout_sec: 60,
     });
 
@@ -267,7 +319,7 @@ async fn save_settings(
     let agent_new = Agent::new(
         Arc::new(provider),
         Arc::new(Runner::new(RunnerConfig {
-            blender_bin: settings.blender_bin.clone(),
+            blender_bin: resolved_bin,
             timeout_sec: 60,
         })),
         AgentConfig {
@@ -283,12 +335,181 @@ async fn save_settings(
     Ok(())
 }
 
+pub fn resolve_blender_binary(path_str: &str) -> String {
+    let p = std::path::Path::new(path_str);
+    if p.is_dir() {
+        let exe = p.join("blender.exe");
+        if exe.exists() {
+            return exe.to_string_lossy().to_string();
+        }
+        let bin = p.join("blender");
+        if bin.exists() {
+            return bin.to_string_lossy().to_string();
+        }
+    }
+    if p.is_file() && p.exists() {
+        return p.to_string_lossy().to_string();
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let candidates = [
+            r"C:\Program Files\Blender Foundation\Blender 5.2\blender.exe",
+            r"C:\Program Files\Blender Foundation\Blender 5.1\blender.exe",
+            r"C:\Program Files\Blender Foundation\Blender 5.0\blender.exe",
+            r"C:\Program Files\Blender Foundation\Blender 4.5\blender.exe",
+            r"C:\Program Files\Blender Foundation\Blender 4.4\blender.exe",
+            r"C:\Program Files\Blender Foundation\Blender 4.3\blender.exe",
+            r"C:\Program Files\Blender Foundation\Blender 4.2\blender.exe",
+        ];
+        for cand in candidates {
+            if std::path::Path::new(cand).exists() {
+                return cand.to_string();
+            }
+        }
+        if let Ok(entries) = std::fs::read_dir(r"C:\Program Files\Blender Foundation") {
+            for entry in entries.flatten() {
+                let exe = entry.path().join("blender.exe");
+                if exe.exists() {
+                    return exe.to_string_lossy().to_string();
+                }
+            }
+        }
+    }
+    path_str.to_string()
+}
+
+async fn query_gpu_info() -> (
+    Option<String>,
+    Option<f32>,
+    Option<f32>,
+    Option<f32>,
+    Option<f32>,
+) {
+    let output = tokio::process::Command::new("nvidia-smi")
+        .args([
+            "--query-gpu=name,memory.total,memory.used,utilization.gpu",
+            "--format=csv,noheader,nounits",
+        ])
+        .output()
+        .await;
+    if let Ok(out) = output {
+        if out.status.success() {
+            let s = String::from_utf8_lossy(&out.stdout);
+            let line = s.lines().next().unwrap_or("").trim();
+            let parts: Vec<&str> = line.split(',').map(|p| p.trim()).collect();
+            if parts.len() >= 4 {
+                let name = parts[0].to_string();
+                let total_mb: f32 = parts[1].parse().unwrap_or(0.0);
+                let used_mb: f32 = parts[2].parse().unwrap_or(0.0);
+                let util: f32 = parts[3].parse().unwrap_or(0.0);
+                let total_gb = total_mb / 1024.0;
+                let used_gb = used_mb / 1024.0;
+                let pct = if total_gb > 0.0 {
+                    (used_gb / total_gb) * 100.0
+                } else {
+                    0.0
+                };
+                return (
+                    Some(name),
+                    Some(util),
+                    Some(used_gb),
+                    Some(total_gb),
+                    Some(pct),
+                );
+            }
+        }
+    }
+    (None, None, None, None, None)
+}
+
+async fn collect_system_metrics(
+    sys: &mut sysinfo::System,
+    last_instant: &mut std::time::Instant,
+) -> SystemMetrics {
+    sys.refresh_cpu_usage();
+    sys.refresh_memory();
+
+    let cpu_percent = sys.global_cpu_usage();
+    let cpu_cores = sys.cpus().len();
+    let cpu_brand = sys
+        .cpus()
+        .first()
+        .map(|c| c.brand().trim().to_string())
+        .unwrap_or_else(|| "CPU".to_string());
+
+    let ram_used_gb = sys.used_memory() as f32 / (1024.0 * 1024.0 * 1024.0);
+    let ram_total_gb = sys.total_memory() as f32 / (1024.0 * 1024.0 * 1024.0);
+    let ram_percent = if ram_total_gb > 0.0 {
+        (ram_used_gb / ram_total_gb) * 100.0
+    } else {
+        0.0
+    };
+
+    let disks = sysinfo::Disks::new_with_refreshed_list();
+    let (mut disk_total_bytes, mut disk_avail_bytes) = (0u64, 0u64);
+    for disk in disks.list() {
+        disk_total_bytes += disk.total_space();
+        disk_avail_bytes += disk.available_space();
+    }
+    let disk_used_bytes = disk_total_bytes.saturating_sub(disk_avail_bytes);
+    let disk_used_gb = disk_used_bytes as f32 / (1024.0 * 1024.0 * 1024.0);
+    let disk_total_gb = disk_total_bytes as f32 / (1024.0 * 1024.0 * 1024.0);
+    let disk_percent = if disk_total_gb > 0.0 {
+        (disk_used_gb / disk_total_gb) * 100.0
+    } else {
+        0.0
+    };
+
+    let now = std::time::Instant::now();
+    let elapsed = now.duration_since(*last_instant).as_secs_f32().max(0.1);
+    *last_instant = now;
+
+    sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+    let mut total_read_bytes = 0u64;
+    let mut total_written_bytes = 0u64;
+    for proc in sys.processes().values() {
+        let du = proc.disk_usage();
+        total_read_bytes = total_read_bytes.saturating_add(du.read_bytes);
+        total_written_bytes = total_written_bytes.saturating_add(du.written_bytes);
+    }
+    let disk_read_mbps = (total_read_bytes as f32 / elapsed) / (1024.0 * 1024.0);
+    let disk_write_mbps = (total_written_bytes as f32 / elapsed) / (1024.0 * 1024.0);
+
+    let (gpu_name, gpu_percent, vram_used_gb, vram_total_gb, vram_percent) = query_gpu_info().await;
+
+    SystemMetrics {
+        cpu_percent,
+        cpu_cores,
+        cpu_brand,
+        ram_used_gb,
+        ram_total_gb,
+        ram_percent,
+        gpu_name,
+        gpu_percent,
+        vram_used_gb,
+        vram_total_gb,
+        vram_percent,
+        disk_read_mbps,
+        disk_write_mbps,
+        disk_used_gb,
+        disk_total_gb,
+        disk_percent,
+    }
+}
+
+#[tauri::command]
+async fn get_system_metrics(state: State<'_, Arc<AppState>>) -> Result<SystemMetrics, String> {
+    let metrics = state.metrics.read().await.clone();
+    Ok(metrics)
+}
+
 #[tauri::command]
 async fn check_doctor() -> Result<DoctorResult, String> {
     let settings = get_settings().await?;
+    let bin = resolve_blender_binary(&settings.blender_bin);
 
     // Check Blender
-    let blender_out = tokio::process::Command::new(&settings.blender_bin)
+    let blender_out = tokio::process::Command::new(&bin)
         .arg("--version")
         .output()
         .await;
@@ -337,22 +558,26 @@ async fn check_doctor() -> Result<DoctorResult, String> {
 }
 
 fn resolve_workspace_path(path: &str) -> PathBuf {
-    // 1. Try tauri dev relative path
-    let p = PathBuf::from("../../").join(path);
-    if p.exists() {
-        return p;
+    if let Ok(mut dir) = std::env::current_dir() {
+        loop {
+            let candidate = dir.join(path);
+            if candidate.exists() {
+                return candidate;
+            }
+            if !dir.pop() {
+                break;
+            }
+        }
     }
-    // 2. Try current working directory
-    let p = PathBuf::from(path);
-    if p.exists() {
-        return p;
-    }
-    // 3. Try relative to the executable (production)
-    if let Ok(mut exe_path) = std::env::current_exe() {
-        exe_path.pop();
-        let p = exe_path.join(path);
-        if p.exists() {
-            return p;
+    if let Ok(mut exe) = std::env::current_exe() {
+        loop {
+            let candidate = exe.join(path);
+            if candidate.exists() {
+                return candidate;
+            }
+            if !exe.pop() {
+                break;
+            }
         }
     }
     PathBuf::from(path)
@@ -407,9 +632,10 @@ pub fn run() {
                 }
             }
 
+            let resolved_blender_bin = resolve_blender_binary(&blender_bin);
             let provider = OpenAiCompatProvider::new(base_url, model, api_key);
             let runner = Runner::new(RunnerConfig {
-                blender_bin: blender_bin.clone(),
+                blender_bin: resolved_blender_bin.clone(),
                 timeout_sec: 60,
             });
 
@@ -423,7 +649,7 @@ pub fn run() {
             let agent = Agent::new(
                 Arc::new(provider),
                 Arc::new(Runner::new(RunnerConfig {
-                    blender_bin: blender_bin.clone(),
+                    blender_bin: resolved_blender_bin,
                     timeout_sec: 60,
                 })),
                 AgentConfig {
@@ -433,10 +659,24 @@ pub fn run() {
                 },
             );
 
+            let metrics = Arc::new(RwLock::new(SystemMetrics::default()));
+            let metrics_worker = metrics.clone();
+            tokio::spawn(async move {
+                let mut sys = sysinfo::System::new_all();
+                sys.refresh_all();
+                let mut last_instant = std::time::Instant::now();
+                loop {
+                    let m = collect_system_metrics(&mut sys, &mut last_instant).await;
+                    *metrics_worker.write().await = m;
+                    tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
+                }
+            });
+
             app.manage(Arc::new(AppState {
                 agent: RwLock::new(agent),
                 runner: RwLock::new(runner),
                 store: std::sync::Mutex::new(store),
+                metrics,
             }));
             Ok(())
         })
@@ -452,6 +692,7 @@ pub fn run() {
             export_script,
             export_preview,
             render_frame,
+            get_system_metrics,
             get_settings,
             save_settings,
             check_doctor
