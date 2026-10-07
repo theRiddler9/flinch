@@ -152,7 +152,7 @@ async fn get_settings() -> Result<AppSettings, String> {
         Some(cfg) => (cfg.provider.base_url, cfg.provider.model, cfg.blender.bin),
         None => (
             "http://localhost:11434/v1".to_string(),
-            "llama3".to_string(),
+            "qwen3.5:9b".to_string(),
             "blender".to_string(),
         ),
     };
@@ -332,7 +332,7 @@ pub fn run() {
                 ),
                 None => (
                     "http://localhost:11434/v1".to_string(),
-                    "llama3".to_string(),
+                    "qwen3.5:9b".to_string(),
                     "OPENAI_API_KEY".to_string(),
                     "blender".to_string(),
                 ),

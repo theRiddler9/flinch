@@ -25,7 +25,7 @@ export function SettingsModal({
     blender_bin: 'blender',
     provider_kind: 'openai_compatible',
     provider_base_url: 'http://localhost:11434/v1',
-    provider_model: 'llama3',
+    provider_model: 'qwen3.5:9b',
     api_key: '',
   });
   
@@ -135,7 +135,7 @@ export function SettingsModal({
               className={cn("w-full bg-flinch-deep border rounded px-3 py-2 text-sm text-flinch-text outline-none flinch-transition", errors.provider_model ? "border-flinch-error focus:border-flinch-error" : "border-flinch-border focus:border-flinch-text-muted")}
               value={settings.provider_model}
               onChange={(e) => setSettings({ ...settings, provider_model: e.target.value })}
-              placeholder="llama3"
+              placeholder="qwen3.5:9b"
             />
             {errors.provider_model && <div className="text-xs text-flinch-error mt-1">{errors.provider_model}</div>}
           </div>
