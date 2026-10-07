@@ -12,6 +12,26 @@ try:
 except ImportError:
     HAS_BPY = False
 
+def get_action_fcurves(action):
+    """Universal fcurve extractor supporting Blender 4.x legacy and Blender 5.x slotted/layered actions."""
+    if not action:
+        return []
+    if hasattr(action, "fcurves"):
+        try:
+            return list(action.fcurves)
+        except Exception:
+            pass
+    curves = []
+    if hasattr(action, "layers"):
+        for layer in action.layers:
+            if hasattr(layer, "strips"):
+                for strip in layer.strips:
+                    if hasattr(strip, "channelbags"):
+                        for cb in strip.channelbags:
+                            if hasattr(cb, "fcurves"):
+                                curves.extend(list(cb.fcurves))
+    return curves
+
 def collect_scene_stats():
     if not HAS_BPY:
         return {}
@@ -26,7 +46,10 @@ def collect_scene_stats():
     }
     
     for obj in bpy.data.objects:
-        has_anim = obj.animation_data is not None and obj.animation_data.action is not None
+        obj_curves = []
+        if obj.animation_data and obj.animation_data.action:
+            obj_curves = get_action_fcurves(obj.animation_data.action)
+        has_anim = len(obj_curves) > 0 or bool(obj.animation_data and getattr(obj.animation_data, 'nla_tracks', None) and len(obj.animation_data.nla_tracks) > 0)
         stats["objects"].append({
             "name": obj.name,
             "type": obj.type,
@@ -41,8 +64,7 @@ def collect_scene_stats():
         elif obj.type == 'GREASEPENCIL':
             stats["counts"]["grease_pencil"] += 1
             
-        if has_anim:
-            stats["keyframe_count"] += len(obj.animation_data.action.fcurves)
+        stats["keyframe_count"] += len(obj_curves)
             
     return stats
 
@@ -67,6 +89,7 @@ def main():
     parser.add_argument("--render-test", action="store_true")
     parser.add_argument("--save-blend", required=False, help="Path to save the .blend file")
     parser.add_argument("--render-image", required=False, help="Path to save a rendered image frame")
+    parser.add_argument("--frame", type=int, required=False, help="Specific frame number to evaluate and render")
     
     # In Blender, sys.argv includes the blender executable and --, so we slice it
     if "--" in sys.argv:
@@ -172,13 +195,32 @@ def main():
             result["stage"] = "ok"
             
         if HAS_BPY:
+            if args.frame is not None:
+                bpy.context.scene.frame_set(args.frame)
+            
             if args.save_blend:
-                bpy.ops.wm.save_as_mainfile(filepath=os.path.abspath(args.save_blend))
+                blend_dest = os.path.abspath(args.save_blend)
+                os.makedirs(os.path.dirname(blend_dest), exist_ok=True)
+                bpy.ops.wm.save_as_mainfile(filepath=blend_dest)
             
             if args.render_image:
-                bpy.context.scene.render.filepath = os.path.abspath(args.render_image)
+                if args.frame is not None:
+                    bpy.context.scene.frame_set(args.frame)
+                # Auto-add fallback preview camera if scene has no active camera
+                if not bpy.context.scene.camera:
+                    cam_data = bpy.data.cameras.new("FlinchPreviewCam")
+                    cam_obj = bpy.data.objects.new("FlinchPreviewCam", cam_data)
+                    bpy.context.scene.collection.objects.link(cam_obj)
+                    cam_obj.location = (6.0, -6.0, 4.5)
+                    cam_obj.rotation_euler = (1.1, 0.0, 0.785)
+                    bpy.context.scene.camera = cam_obj
+                bpy.context.scene.render.resolution_x = 640
+                bpy.context.scene.render.resolution_y = 360
+                bpy.context.scene.render.resolution_percentage = 100
+                img_dest = os.path.abspath(args.render_image)
+                os.makedirs(os.path.dirname(img_dest), exist_ok=True)
+                bpy.context.scene.render.filepath = img_dest
                 bpy.context.scene.render.engine = 'BLENDER_WORKBENCH'
-                # Ensure the path ends with a supported extension or blender adds it
                 bpy.ops.render.render(write_still=True)
             
     except Exception as e:
@@ -191,7 +233,9 @@ def main():
         }
     finally:
         result["duration_ms"] = int((time.time() - start_time) * 1000)
-        with open(out_path, "w") as f:
+        out_abs = os.path.abspath(out_path)
+        os.makedirs(os.path.dirname(out_abs), exist_ok=True)
+        with open(out_abs, "w") as f:
             json.dump(result, f)
 
 if __name__ == "__main__":

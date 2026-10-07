@@ -34,7 +34,21 @@ def run_checks(spec_path, scene_stats):
                 count = 0
                 
                 for action in bpy.data.actions:
-                    for fcurve in action.fcurves:
+                    curves = []
+                    if hasattr(action, "fcurves"):
+                        try:
+                            curves = list(action.fcurves)
+                        except Exception:
+                            pass
+                    if not curves and hasattr(action, "layers"):
+                        for layer in action.layers:
+                            if hasattr(layer, "strips"):
+                                for strip in layer.strips:
+                                    if hasattr(strip, "channelbags"):
+                                        for cb in strip.channelbags:
+                                            if hasattr(cb, "fcurves"):
+                                                curves.extend(list(cb.fcurves))
+                    for fcurve in curves:
                         if data_path in fcurve.data_path:
                             count += len(fcurve.keyframe_points)
                 passed = count >= min_keys
