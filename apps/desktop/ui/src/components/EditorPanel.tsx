@@ -2,21 +2,42 @@ import { useStore } from '../state/useStore';
 import { Editor, DiffEditor } from '@monaco-editor/react';
 import {
   AlertCircle, CheckCircle2, Download, FileCode,
-  ChevronDown, ChevronRight, Copy, Code2,
+  ChevronDown, ChevronRight, Copy, Code2, Sparkles,
+  Columns, PlaySquare,
 } from 'lucide-react';
-import { invoke, convertFileSrc } from '@tauri-apps/api/core';
+import { invoke } from '@tauri-apps/api/core';
 import { tempDir, join } from '@tauri-apps/api/path';
 import { save } from '@tauri-apps/plugin-dialog';
 import { cn } from '../lib/utils';
 import { useState, useEffect, useRef } from 'react';
 import { FrameScrubber } from './FrameScrubber';
 
+const DEFAULT_SCRIPT = `import bpy
+
+# Default Workspace Animation (Blender 5.2)
+bpy.ops.wm.read_factory_settings(use_empty=True)
+
+# Add a bouncing cube with keyframed z-location
+bpy.ops.mesh.primitive_cube_add(size=2.0, location=(0, 0, 0))
+cube = bpy.context.active_object
+cube.name = "BouncingCube"
+
+for f, z in [(1, 0.0), (15, 2.5), (30, 0.0), (45, 2.5), (60, 0.0)]:
+    cube.location.z = z
+    cube.keyframe_insert(data_path="location", frame=f)
+
+bpy.context.scene.frame_start = 1
+bpy.context.scene.frame_end = 60
+bpy.context.scene.frame_set(1)
+`;
+
 export function EditorPanel() {
   const { attempts, activeAttemptIndex, setActiveAttempt, finalResult, theme, fontSize } = useStore();
   const [errorExpanded, setErrorExpanded] = useState(true);
+  const [viewMode, setViewMode] = useState<'split' | 'viewport' | 'code'>('split');
 
-  // Resizable split
-  const [splitPct, setSplitPct] = useState(60); // top pane %
+  // Resizable split: top code %, bottom preview %
+  const [splitPct, setSplitPct] = useState(55);
   const dragging = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -27,102 +48,132 @@ export function EditorPanel() {
 
   const currentAttempt  = attempts[activeAttemptIndex];
   const previousAttempt = activeAttemptIndex > 0 ? attempts[activeAttemptIndex - 1] : null;
-  const isDiffMode  = previousAttempt && currentAttempt.script !== previousAttempt.script;
-  const hasError    = currentAttempt?.harness_result && !currentAttempt.harness_result.ok;
-  const isSuccess   = currentAttempt?.harness_result?.ok;
+  const script          = currentAttempt ? currentAttempt.script : DEFAULT_SCRIPT;
+  const isDiffMode      = Boolean(previousAttempt && currentAttempt && currentAttempt.script !== previousAttempt.script);
+  const hasError        = Boolean(currentAttempt?.harness_result && !currentAttempt.harness_result.ok);
+  const isSuccess       = Boolean(currentAttempt?.harness_result?.ok);
 
-  // Reset split when script changes
-  useEffect(() => { setSplitPct(60); }, [currentAttempt?.script]);
-
-  // Drag handler
+  // Drag handler for resizing split
   const onMouseDown = () => { dragging.current = true; };
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       if (!dragging.current || !containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
       const pct = ((e.clientY - rect.top) / rect.height) * 100;
-      setSplitPct(Math.min(Math.max(pct, 25), 80));
+      setSplitPct(Math.min(Math.max(pct, 20), 80));
     };
     const onUp = () => { dragging.current = false; };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
-    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
   }, []);
 
   const handleExportBlend = async () => {
     const path = await save({ filters: [{ name: 'Blender', extensions: ['blend'] }] });
-    if (path) await invoke('export_blend', { script: currentAttempt.script, outPath: path });
+    if (path) await invoke('export_blend', { script, outPath: path });
   };
 
   const handleSavePy = async () => {
     const path = await save({ filters: [{ name: 'Python', extensions: ['py'] }] });
-    if (path) await invoke('export_script', { script: currentAttempt.script, outPath: path });
+    if (path) await invoke('export_script', { script, outPath: path });
   };
 
   const handleCopyCode = async () => {
-    try { await navigator.clipboard.writeText(currentAttempt.script); } catch (err) { console.error(err); }
+    try { await navigator.clipboard.writeText(script); } catch (err) { console.error(err); }
   };
 
   const handleOpenExternal = async () => {
     try {
-      const { open } = await import('@tauri-apps/plugin-opener');
+      const { openPath } = await import('@tauri-apps/plugin-opener');
       const tDir   = await tempDir();
       const rand   = Math.random().toString(36).substring(7);
       const outPath = await join(tDir, `flinch_script_${rand}.py`);
-      await invoke('export_script', { script: currentAttempt.script, outPath });
-      await open(outPath);
+      await invoke('export_script', { script, outPath });
+      await openPath(outPath);
     } catch (err) { console.error(err); }
   };
 
-  if (attempts.length === 0) {
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center bg-flinch-deep">
-        <div className="text-center">
-          <div className="text-6xl mb-5 opacity-20">🧊</div>
-          <div className="text-flinch-text-dim text-sm font-medium mb-1">No script yet</div>
-          <div className="text-flinch-text-muted text-xs">Generated code will appear here</div>
-        </div>
-      </div>
-    );
-  }
-
-  const frameRange: [number, number] = currentAttempt.harness_result?.scene_stats
+  const frameRange: [number, number] = currentAttempt?.harness_result?.scene_stats
     ? [
         currentAttempt.harness_result.scene_stats.frame_range[0],
         currentAttempt.harness_result.scene_stats.frame_range[1],
       ]
-    : [1, 120];
+    : [1, 60];
 
   return (
     <div className="flex-1 flex flex-col min-w-0 bg-flinch-deep overflow-hidden">
       {/* ── Toolbar ─────────────────────────────────────────── */}
-      <div className="flex items-center justify-between px-2 py-1.5 border-b border-flinch-border-dim bg-flinch-panel/80 flinch-glass shrink-0">
-        {/* Attempt tabs */}
-        <div className="flex items-center gap-1">
-          {attempts.map((att, idx) => {
-            const attError = att.harness_result && !att.harness_result.ok;
-            const attOk    = att.harness_result?.ok;
-            return (
-              <button
-                key={idx}
-                onClick={() => setActiveAttempt(idx)}
-                className={cn(
-                  "px-3 py-1.5 rounded-md text-xs font-medium flinch-transition flinch-focus-ring",
-                  "flex items-center gap-1.5",
-                  activeAttemptIndex === idx
-                    ? "bg-flinch-surface text-flinch-text shadow-flinch-panel"
-                    : "text-flinch-text-muted hover:text-flinch-text-dim hover:bg-flinch-surface/40"
-                )}
-              >
-                <span>Attempt {idx + 1}</span>
-                {attError ? (
-                  <AlertCircle size={12} className="text-flinch-error" />
-                ) : attOk ? (
-                  <CheckCircle2 size={12} className="text-flinch-success" />
-                ) : null}
-              </button>
-            );
-          })}
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-flinch-border-dim bg-flinch-panel/80 flinch-glass shrink-0">
+        {/* Attempt tabs or Workspace indicator */}
+        <div className="flex items-center gap-2">
+          {attempts.length === 0 ? (
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium text-flinch-text-dim bg-flinch-surface/40">
+              <Sparkles size={12} className="text-flinch-accent" />
+              <span>Workspace</span>
+            </div>
+          ) : (
+            attempts.map((att, idx) => {
+              const attError = att.harness_result && !att.harness_result.ok;
+              const attOk    = att.harness_result?.ok;
+              return (
+                <button
+                  key={idx}
+                  onClick={() => setActiveAttempt(idx)}
+                  className={cn(
+                    "px-3 py-1.5 rounded-md text-xs font-medium flinch-transition flinch-focus-ring",
+                    "flex items-center gap-1.5",
+                    activeAttemptIndex === idx
+                      ? "bg-flinch-surface text-flinch-text shadow-flinch-panel"
+                      : "text-flinch-text-muted hover:text-flinch-text-dim hover:bg-flinch-surface/40"
+                  )}
+                >
+                  <span>Attempt {idx + 1}</span>
+                  {attError ? (
+                    <AlertCircle size={12} className="text-flinch-error" />
+                  ) : attOk ? (
+                    <CheckCircle2 size={12} className="text-flinch-success" />
+                  ) : null}
+                </button>
+              );
+            })
+          )}
+
+          {/* View mode toggle */}
+          <div className="flex items-center gap-0.5 bg-flinch-surface/60 p-0.5 rounded border border-flinch-border-dim ml-2">
+            <button
+              onClick={() => setViewMode('split')}
+              className={cn(
+                "px-2 py-0.5 text-2xs font-medium rounded flinch-transition flex items-center gap-1",
+                viewMode === 'split' ? "bg-flinch-accent text-white shadow-xs" : "text-flinch-text-muted hover:text-flinch-text"
+              )}
+              title="Split View (Code + Viewport)"
+            >
+              <Columns size={11} /> <span>Split</span>
+            </button>
+            <button
+              onClick={() => setViewMode('viewport')}
+              className={cn(
+                "px-2 py-0.5 text-2xs font-medium rounded flinch-transition flex items-center gap-1",
+                viewMode === 'viewport' ? "bg-flinch-accent text-white shadow-xs" : "text-flinch-text-muted hover:text-flinch-text"
+              )}
+              title="Full Viewport & Timeline Scrubber"
+            >
+              <PlaySquare size={11} /> <span>Viewport & Timeline</span>
+            </button>
+            <button
+              onClick={() => setViewMode('code')}
+              className={cn(
+                "px-2 py-0.5 text-2xs font-medium rounded flinch-transition flex items-center gap-1",
+                viewMode === 'code' ? "bg-flinch-accent text-white shadow-xs" : "text-flinch-text-muted hover:text-flinch-text"
+              )}
+              title="Code Editor Only"
+            >
+              <Code2 size={11} /> <span>Code</span>
+            </button>
+          </div>
         </div>
 
         {/* Status + Export actions */}
@@ -158,56 +209,109 @@ export function EditorPanel() {
         </div>
       </div>
 
-      {/* ── Dual Pane ───────────────────────────────────────── */}
+      {/* ── Main Workspace Area ─── */}
       <div ref={containerRef} className="flex-1 flex flex-col min-h-0 overflow-hidden">
-        {/* TOP: Monaco editor */}
-        <div style={{ height: `${splitPct}%` }} className="min-h-0 overflow-hidden">
-          {isDiffMode ? (
-            <DiffEditor
-              language="python" theme={monacoTheme}
-              original={previousAttempt.script}
-              modified={currentAttempt.script}
-              options={{
-                readOnly: true, minimap: { enabled: false }, scrollBeyondLastLine: false,
-                renderSideBySide: false, fontSize, lineHeight: Math.round(fontSize * 1.5),
-                fontFamily: "'JetBrains Mono','Fira Code','Cascadia Code',monospace",
-                padding: { top: 12, bottom: 12 }, smoothScrolling: true,
-                cursorBlinking: 'smooth', cursorSmoothCaretAnimation: 'on',
-              }}
-            />
-          ) : (
-            <Editor
-              language="python" theme={monacoTheme}
-              value={currentAttempt.script}
-              options={{
-                readOnly: true, minimap: { enabled: false }, scrollBeyondLastLine: false,
-                fontSize, lineHeight: Math.round(fontSize * 1.5),
-                fontFamily: "'JetBrains Mono','Fira Code','Cascadia Code',monospace",
-                padding: { top: 12, bottom: 12 }, smoothScrolling: true,
-                cursorBlinking: 'smooth', cursorSmoothCaretAnimation: 'on',
-              }}
-            />
-          )}
-        </div>
+        {viewMode === 'viewport' ? (
+          /* FULL VIEWPORT & SCRUBBER */
+          <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+            <FrameScrubber script={script} frameRange={frameRange} />
+          </div>
+        ) : viewMode === 'code' ? (
+          /* FULL CODE */
+          <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+            <div className="px-3 py-1 bg-flinch-panel/40 border-b border-flinch-border-dim/40 text-2xs font-mono text-flinch-text-muted flex items-center justify-between shrink-0">
+              <span>📝 Python (bpy)</span>
+              <span>{currentAttempt ? `Attempt ${activeAttemptIndex + 1}` : 'Live Editor'}</span>
+            </div>
+            <div className="flex-1 min-h-0">
+              {isDiffMode && previousAttempt ? (
+                <DiffEditor
+                  language="python" theme={monacoTheme}
+                  original={previousAttempt.script}
+                  modified={script}
+                  options={{
+                    readOnly: false, minimap: { enabled: false }, scrollBeyondLastLine: false,
+                    renderSideBySide: false, fontSize, lineHeight: Math.round(fontSize * 1.5),
+                    fontFamily: "'JetBrains Mono','Fira Code','Cascadia Code',monospace",
+                    padding: { top: 10, bottom: 10 }, smoothScrolling: true,
+                    cursorBlinking: 'smooth', cursorSmoothCaretAnimation: 'on',
+                  }}
+                />
+              ) : (
+                <Editor
+                  language="python" theme={monacoTheme}
+                  value={script}
+                  options={{
+                    readOnly: false, minimap: { enabled: false }, scrollBeyondLastLine: false,
+                    fontSize, lineHeight: Math.round(fontSize * 1.5),
+                    fontFamily: "'JetBrains Mono','Fira Code','Cascadia Code',monospace",
+                    padding: { top: 10, bottom: 10 }, smoothScrolling: true,
+                    cursorBlinking: 'smooth', cursorSmoothCaretAnimation: 'on',
+                  }}
+                />
+              )}
+            </div>
+          </div>
+        ) : (
+          /* SPLIT VIEW (Code top, Viewport bottom) */
+          <>
+            <div style={{ height: `${splitPct}%` }} className="min-h-0 overflow-hidden flex flex-col">
+              <div className="px-3 py-1 bg-flinch-panel/40 border-b border-flinch-border-dim/40 text-2xs font-mono text-flinch-text-muted flex items-center justify-between shrink-0">
+                <span>📝 Python (bpy)</span>
+                <span>{currentAttempt ? `Attempt ${activeAttemptIndex + 1}` : 'Live Editor'}</span>
+              </div>
+              <div className="flex-1 min-h-0">
+                {isDiffMode && previousAttempt ? (
+                  <DiffEditor
+                    language="python" theme={monacoTheme}
+                    original={previousAttempt.script}
+                    modified={script}
+                    options={{
+                      readOnly: false, minimap: { enabled: false }, scrollBeyondLastLine: false,
+                      renderSideBySide: false, fontSize, lineHeight: Math.round(fontSize * 1.5),
+                      fontFamily: "'JetBrains Mono','Fira Code','Cascadia Code',monospace",
+                      padding: { top: 10, bottom: 10 }, smoothScrolling: true,
+                      cursorBlinking: 'smooth', cursorSmoothCaretAnimation: 'on',
+                    }}
+                  />
+                ) : (
+                  <Editor
+                    language="python" theme={monacoTheme}
+                    value={script}
+                    options={{
+                      readOnly: false, minimap: { enabled: false }, scrollBeyondLastLine: false,
+                      fontSize, lineHeight: Math.round(fontSize * 1.5),
+                      fontFamily: "'JetBrains Mono','Fira Code','Cascadia Code',monospace",
+                      padding: { top: 10, bottom: 10 }, smoothScrolling: true,
+                      cursorBlinking: 'smooth', cursorSmoothCaretAnimation: 'on',
+                    }}
+                  />
+                )}
+              </div>
+            </div>
 
-        {/* Drag handle */}
-        <div
-          onMouseDown={onMouseDown}
-          className="h-1.5 bg-flinch-border-dim hover:bg-flinch-accent/50 cursor-row-resize flinch-transition shrink-0"
-          title="Drag to resize"
-        />
+            {/* Drag handle */}
+            <div
+              onMouseDown={onMouseDown}
+              className="h-2 bg-flinch-border-dim/80 hover:bg-flinch-accent/80 cursor-row-resize flinch-transition shrink-0 flex items-center justify-center group"
+              title="Drag to resize code / viewport split"
+            >
+              <div className="w-8 h-0.5 rounded-full bg-flinch-text-muted/40 group-hover:bg-white" />
+            </div>
 
-        {/* BOTTOM: Frame Scrubber / Preview */}
-        <div style={{ height: `${100 - splitPct}%` }} className="min-h-0 overflow-hidden">
-          <FrameScrubber
-            script={currentAttempt.script}
-            frameRange={frameRange}
-          />
-        </div>
+            {/* BOTTOM: Frame Scrubber / Viewport Canvas */}
+            <div style={{ height: `${100 - splitPct}%` }} className="min-h-0 overflow-hidden flex flex-col">
+              <FrameScrubber
+                script={script}
+                frameRange={frameRange}
+              />
+            </div>
+          </>
+        )}
       </div>
 
       {/* ── Error / Diagnostics Panel ───────────────────────── */}
-      {hasError && currentAttempt.harness_result && (
+      {hasError && currentAttempt?.harness_result && (
         <div className="border-t border-flinch-error/20 bg-flinch-deep shrink-0">
           <button
             onClick={() => setErrorExpanded(!errorExpanded)}
@@ -218,7 +322,7 @@ export function EditorPanel() {
             <span>Stage: {currentAttempt.harness_result.stage}</span>
             {currentAttempt.harness_result.error && (
               <span className="ml-2 text-xs text-flinch-error/70 font-mono truncate">
-                {currentAttempt.harness_result.error.type}
+                {(currentAttempt.harness_result.error as any).error_type ?? (currentAttempt.harness_result.error as any).type}
               </span>
             )}
           </button>
@@ -254,7 +358,7 @@ export function EditorPanel() {
       )}
 
       {/* ── Success info bar ────────────────────────────────── */}
-      {isSuccess && currentAttempt.harness_result?.scene_stats && (
+      {isSuccess && currentAttempt?.harness_result?.scene_stats && (
         <div className="px-4 py-2 border-t border-flinch-success/20 bg-flinch-success/5 flex items-center gap-3 text-2xs text-flinch-text-muted font-mono shrink-0">
           <CheckCircle2 size={12} className="text-flinch-success shrink-0" />
           <span>{currentAttempt.harness_result.scene_stats.counts.mesh}M {currentAttempt.harness_result.scene_stats.counts.light}L {currentAttempt.harness_result.scene_stats.counts.camera}C</span>
