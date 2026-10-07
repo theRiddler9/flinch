@@ -1,4 +1,4 @@
-import { invoke, convertFileSrc } from '@tauri-apps/api/core';
+import { invoke } from '@tauri-apps/api/core';
 import { tempDir, join } from '@tauri-apps/api/path';
 import {
   Play, Pause, SkipBack, SkipForward,
@@ -37,8 +37,8 @@ export function FrameScrubber({ script, frameRange }: FrameScrubberProps) {
       const tDir = await tempDir();
       const outPath = await join(tDir, `flinch_frame_${f}.png`);
       const engine = useStore.getState().enginePreset;
-      await invoke('render_frame', { script, frame: f, outPath, engine });
-      setPreviewSrc(convertFileSrc(outPath) + `?t=${Date.now()}`);
+      const b64DataUri = await invoke<string>('render_frame', { script, frame: f, outPath, engine });
+      setPreviewSrc(b64DataUri);
     } catch (e: any) {
       setError(String(e));
     } finally {

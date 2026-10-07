@@ -29,6 +29,7 @@ keyring = "4.2.0"
 reqwest = { version = "0.13.5", features = ["json"] }
 tokio = { version = "1.53.2", features = ["process", "rt", "rt-multi-thread", "macros", "sync"] }
 sysinfo = "0.33"
+base64 = "0.23.1"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

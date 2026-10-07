@@ -176,7 +176,7 @@ async fn render_frame(
     frame: i32,
     out_path: String,
     engine: String,
-) -> Result<(), String> {
+) -> Result<String, String> {
     let tmp = std::env::temp_dir();
     let script_path = tmp.join(format!("flinch_frame_{}.py", frame));
     let result_path = tmp.join(format!("flinch_frame_{}_result.json", frame));
@@ -226,7 +226,13 @@ async fn render_frame(
             stderr
         ));
     }
-    Ok(())
+
+    use base64::{engine::general_purpose, Engine as _};
+    let img_bytes = std::fs::read(&out_path).map_err(|e| e.to_string())?;
+    let b64 = general_purpose::STANDARD.encode(&img_bytes);
+    let _ = std::fs::remove_file(&out_path); // clean up
+
+    Ok(format!("data:image/png;base64,{}", b64))
 }
 
 #[tauri::command]
