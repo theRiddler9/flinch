@@ -126,6 +126,50 @@ async fn export_preview(
 }
 
 #[tauri::command]
+async fn render_frame(
+    state: State<'_, Arc<AppState>>,
+    script: String,
+    frame: i32,
+    out_path: String,
+) -> Result<(), String> {
+    let tmp = std::env::temp_dir();
+    let script_path = tmp.join(format!("flinch_frame_{}.py", frame));
+    let result_path = tmp.join(format!("flinch_frame_{}_result.json", frame));
+    std::fs::write(&script_path, &script).map_err(|e| e.to_string())?;
+
+    let runner = state.runner.read().await;
+    // Use the runner's blender bin directly for a frame render
+    let blender_bin = runner.blender_bin();
+
+    let output = tokio::process::Command::new(blender_bin)
+        .arg("-b")
+        .arg("--factory-startup")
+        .arg("--python-exit-code")
+        .arg("1")
+        .arg("--python")
+        .arg("blender/harness.py")
+        .arg("--")
+        .arg("--script")
+        .arg(&script_path)
+        .arg("--out")
+        .arg(&result_path)
+        .arg("--render-image")
+        .arg(&out_path)
+        .output()
+        .await
+        .map_err(|e| format!("Failed to spawn blender: {}", e))?;
+
+    let _ = std::fs::remove_file(&script_path);
+    let _ = std::fs::remove_file(&result_path);
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Blender frame render failed: {}", stderr));
+    }
+    Ok(())
+}
+
+#[tauri::command]
 async fn cancel_run() -> Result<(), String> {
     Ok(())
 }
@@ -407,6 +451,7 @@ pub fn run() {
             export_blend,
             export_script,
             export_preview,
+            render_frame,
             get_settings,
             save_settings,
             check_doctor

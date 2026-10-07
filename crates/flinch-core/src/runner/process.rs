@@ -27,6 +27,10 @@ impl Runner {
         Self { config }
     }
 
+    pub fn blender_bin(&self) -> &str {
+        &self.config.blender_bin
+    }
+
     pub async fn run_script<F, Fut>(
         &self,
         script: &str,
