@@ -133,6 +133,10 @@ export function FrameScrubber({ script, frameRange }: FrameScrubberProps) {
             src={previewSrc}
             alt={`Frame ${frame}`}
             className="max-w-full max-h-full object-contain shadow-2xl rounded-sm"
+            onError={() => {
+              setPreviewSrc(null);
+              setError("Image failed to load. The frame might not have been generated correctly by Blender.");
+            }}
           />
         ) : !loading && !error ? (
           <div className="text-center p-6 text-flinch-text-muted">
