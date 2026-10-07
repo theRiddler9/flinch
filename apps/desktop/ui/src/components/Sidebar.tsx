@@ -8,6 +8,7 @@ import { cn } from '../lib/utils';
 export function Sidebar() {
   const history = useStore((s) => s.history);
   const loadHistory = useStore((s) => s.loadHistory);
+  const doctorStatus = useStore((s) => s.doctorStatus);
 
   useEffect(() => {
     loadHistory();
@@ -112,17 +113,43 @@ export function Sidebar() {
         )}
       </div>
 
-      {/* Footer */}
-      <div className="px-4 py-3 border-t border-flinch-border-dim flex items-center justify-between">
-        <div className="text-2xs text-flinch-text-muted">
-          Blender 4.5 LTS
-        </div>
+      {/* Footer / Utilities */}
+      <div className="p-2 border-t border-flinch-border-dim space-y-0.5">
+        <button
+          className="w-full flex items-center justify-between px-3 py-2 rounded-md text-sm text-flinch-text-dim hover:text-flinch-text hover:bg-flinch-surface/60 flinch-transition group"
+          onClick={() => {
+            invoke('check_doctor').then(() => {
+              useStore.setState({ doctorStatus: 'checking' });
+              setTimeout(() => {
+                 invoke<{ blender_ok: boolean; provider_ok: boolean }>('check_doctor')
+                  .then((res) => {
+                    useStore.setState({ doctorStatus: (res.blender_ok && res.provider_ok) ? 'ok' : 'error' });
+                  }).catch(() => useStore.setState({ doctorStatus: 'error' }));
+              }, 500);
+            });
+          }}
+        >
+          <div className="flex items-center gap-2">
+            <Box size={14} className="group-hover:text-flinch-accent flinch-transition" />
+            <span>Connect to Blender</span>
+          </div>
+          {doctorStatus === 'checking' && (
+            <span className="w-2 h-2 rounded-full bg-flinch-warning animate-pulse" />
+          )}
+          {doctorStatus === 'ok' && (
+            <span className="w-2 h-2 rounded-full bg-flinch-success" />
+          )}
+          {doctorStatus === 'error' && (
+            <span className="w-2 h-2 rounded-full bg-flinch-error" />
+          )}
+        </button>
+        
         <button
           onClick={() => useStore.setState({ isSettingsOpen: true })}
-          className="text-flinch-text-muted hover:text-flinch-text flinch-transition rounded p-1 hover:bg-flinch-surface"
-          title="Preferences"
+          className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm text-flinch-text-dim hover:text-flinch-text hover:bg-flinch-surface/60 flinch-transition group"
         >
-          <Settings2 size={14} />
+          <Settings2 size={14} className="group-hover:text-flinch-text flinch-transition" />
+          <span>Settings & Theme</span>
         </button>
       </div>
     </div>

@@ -28,6 +28,7 @@ interface RunState {
   history: SessionHistory[];
   logs: string[];
   isSettingsOpen: boolean;
+  doctorStatus: 'checking' | 'ok' | 'error';
 
   setPrompt: (prompt: string) => void;
   appendToken: (token: string) => void;
@@ -51,6 +52,7 @@ export const useStore = create<RunState>((set, get) => ({
   logs: [],
   history: [],
   isSettingsOpen: false,
+  doctorStatus: 'checking',
 
   setPrompt: (prompt) => set({ prompt }),
 

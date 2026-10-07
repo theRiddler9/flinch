@@ -60,11 +60,13 @@ function App() {
     invoke<{ blender_ok: boolean; provider_ok: boolean }>('check_doctor')
       .then((res) => {
         if (!res.blender_ok || !res.provider_ok) {
-          useStore.setState({ isSettingsOpen: true });
+          useStore.setState({ isSettingsOpen: true, doctorStatus: 'error' });
+        } else {
+          useStore.setState({ doctorStatus: 'ok' });
         }
       })
       .catch(() => {
-        useStore.setState({ isSettingsOpen: true });
+        useStore.setState({ isSettingsOpen: true, doctorStatus: 'error' });
       });
   }, []);
 
