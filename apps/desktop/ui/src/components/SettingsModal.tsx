@@ -30,7 +30,7 @@ export function SettingsModal({
     api_key: '',
   });
 
-  const { theme, setTheme, fontSize, setFontSize } = useStore();
+  const { theme, setTheme, fontSize, setFontSize, enginePreset } = useStore();
   
   const [activeTab, setActiveTab] = useState<Tab>('general');
   const [errors, setErrors] = useState<Partial<Record<keyof Settings, string>>>({});
@@ -174,6 +174,34 @@ export function SettingsModal({
                     />
                     <p className="text-xs text-flinch-text-muted mt-1">If "blender" is in your system PATH, you can just type "blender". Otherwise, provide the full path.</p>
                     {errors.blender_bin && <div className="text-xs text-flinch-error mt-1">{errors.blender_bin}</div>}
+                  </div>
+
+                  <div className="space-y-1.5 pt-4">
+                    <label className="text-sm font-medium text-flinch-text-dim">Preview Render Engine</label>
+                    <p className="text-xs text-flinch-text-muted mb-3">Choose how the live viewport renders frames. This affects the speed and quality of previews.</p>
+                    <div className="space-y-2">
+                      <label className="flex items-start gap-3 cursor-pointer p-2 hover:bg-flinch-surface/40 rounded-md flinch-transition">
+                        <input type="radio" name="engine" value="workbench" checked={enginePreset === 'workbench'} onChange={() => useStore.setState({ enginePreset: 'workbench' })} className="mt-1 accent-flinch-accent" />
+                        <div>
+                          <div className="text-sm text-flinch-text">Workbench (Default)</div>
+                          <div className="text-xs text-flinch-text-muted">Fastest. Uses flat or studio lighting. Best for basic headless testing without GPU dependencies.</div>
+                        </div>
+                      </label>
+                      <label className="flex items-start gap-3 cursor-pointer p-2 hover:bg-flinch-surface/40 rounded-md flinch-transition">
+                        <input type="radio" name="engine" value="eevee" checked={enginePreset === 'eevee'} onChange={() => useStore.setState({ enginePreset: 'eevee' })} className="mt-1 accent-flinch-accent" />
+                        <div>
+                          <div className="text-sm text-flinch-text">EEVEE</div>
+                          <div className="text-xs text-flinch-text-muted">Real-time PBR rendering. May fail or crash in headless mode without a dedicated GPU on Windows/Linux.</div>
+                        </div>
+                      </label>
+                      <label className="flex items-start gap-3 cursor-pointer p-2 hover:bg-flinch-surface/40 rounded-md flinch-transition">
+                        <input type="radio" name="engine" value="cycles_fast" checked={enginePreset === 'cycles_fast'} onChange={() => useStore.setState({ enginePreset: 'cycles_fast' })} className="mt-1 accent-flinch-accent" />
+                        <div>
+                          <div className="text-sm text-flinch-text">Cycles (Fast)</div>
+                          <div className="text-xs text-flinch-text-muted">Raytraced preview (16 samples + denoiser). Accurate lighting but slower frame generation.</div>
+                        </div>
+                      </label>
+                    </div>
                   </div>
                 </div>
               </div>

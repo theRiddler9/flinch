@@ -1,29 +1,19 @@
 import { useEffect, useCallback, useState } from 'react';
 import { useStore } from '../state/useStore';
-import type { EnginePreset } from '../state/useStore';
 import {
   Clock, CheckCircle as CheckCircle2, WarningCircle as AlertCircle, Cube as Box, Sparkle as Sparkles, Gear as Settings2,
-  CaretDown as ChevronDown, CaretRight as ChevronRight, Lightning as Zap, Stack as Layers, Sun, Pulse,
+  CaretDown as ChevronDown, CaretRight as ChevronRight, Lightning as Zap, Sun, Pulse,
   RadioButton as CircleDot, SpinnerGap as Loader2, XCircle, Cpu, HardDrives as HardDrive, Gauge, ArrowSquareOut, Trash
 } from '@phosphor-icons/react';
 import { invoke } from '@tauri-apps/api/core';
 import type { AgentResult } from '../bindings/AgentResult';
 import { cn } from '../lib/utils';
 
-const ENGINE_OPTIONS: { id: EnginePreset; label: string; desc: string }[] = [
-  { id: 'eevee',       label: 'EEVEE Next',     desc: 'Real-time raster' },
-  { id: 'cycles_fast', label: 'Cycles Fast',     desc: 'Low sample preview' },
-  { id: 'cycles_prod', label: 'Cycles Prod',     desc: 'Full quality' },
-];
-
-
 export function Sidebar() {
   const history        = useStore((s) => s.history);
   const loadHistory    = useStore((s) => s.loadHistory);
   const doctorStatus   = useStore((s) => s.doctorStatus);
   
-  const enginePreset   = useStore((s) => s.enginePreset);
-  const setEnginePreset = useStore((s) => s.setEnginePreset);
   const executionQueue  = useStore((s) => s.executionQueue);
   const systemMetrics   = useStore((s) => s.systemMetrics);
   const fetchMetrics    = useStore((s) => s.fetchMetrics);
@@ -110,7 +100,7 @@ export function Sidebar() {
           ) : (
             <div 
               className="w-2 h-2 rounded-full bg-flinch-error" 
-              title={!blenderVersion ? "Blender not found" : !providerOnline ? "Provider offline" : "System Error"} 
+              title="System Error" 
             />
           )}
         </div>
@@ -258,31 +248,6 @@ export function Sidebar() {
               </div>
             </div>
           )}
-        </section>
-
-        {/* ── Engine Presets ── */}
-        <section className="px-3 pt-3">
-          <div className="flex items-center gap-1.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-flinch-text-muted">
-            <Layers size={10} /> Engine Preset
-          </div>
-          <div className="mt-1.5 space-y-1">
-            {ENGINE_OPTIONS.map((opt) => (
-              <button
-                key={opt.id}
-                onClick={() => setEnginePreset(opt.id)}
-                className={cn(
-                  "w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs flinch-transition",
-                  enginePreset === opt.id
-                    ? "bg-flinch-accent/15 text-flinch-accent border border-flinch-accent/25 font-medium"
-                    : "text-flinch-text-dim hover:bg-flinch-surface/40 hover:text-flinch-text border border-transparent"
-                )}
-              >
-                <CircleDot size={10} className={enginePreset === opt.id ? "text-flinch-accent" : "opacity-40"} />
-                <span>{opt.label}</span>
-                <span className="ml-auto text-2xs opacity-50">{opt.desc}</span>
-              </button>
-            ))}
-          </div>
         </section>
 
         {/* ── Execution Queue ── */}

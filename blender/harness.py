@@ -262,6 +262,13 @@ def main():
                         bpy.context.scene.render.engine = 'BLENDER_EEVEE'
                 else:
                     bpy.context.scene.render.engine = 'BLENDER_WORKBENCH'
+                    bpy.context.scene.display.shading.color_type = 'MATERIAL'
+                    bpy.context.scene.display.shading.light = 'STUDIO'
+                    for mat in bpy.data.materials:
+                        if mat.use_nodes and "Principled BSDF" in mat.node_tree.nodes:
+                            bsdf = mat.node_tree.nodes["Principled BSDF"]
+                            if "Base Color" in bsdf.inputs:
+                                mat.diffuse_color = bsdf.inputs["Base Color"].default_value
 
                 bpy.ops.render.render(write_still=True)
             

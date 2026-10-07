@@ -17,7 +17,7 @@ export interface SessionHistory {
   created_at: string;
 }
 
-export type EnginePreset = 'cycles_fast' | 'cycles_prod' | 'eevee';
+export type EnginePreset = 'workbench' | 'eevee' | 'cycles_fast' | 'cycles_prod';
 
 export interface QueueEntry {
   id: string;
@@ -102,7 +102,7 @@ export const useStore = create<RunState>()(
       providerOnline: false,
       theme: 'system',
       fontSize: 13,
-      enginePreset: 'eevee',
+      enginePreset: 'workbench',
       executionQueue: [],
       systemMetrics: null,
 
