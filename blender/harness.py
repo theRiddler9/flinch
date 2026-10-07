@@ -77,7 +77,14 @@ def main():
         "error": None,
         "stdout": "",
         "warnings": [],
-        "scene_stats": {},
+        "scene_stats": {
+            "blender_version": ".".join(map(str, bpy.app.version)) if 'bpy' in globals() else "Unknown",
+            "objects": [],
+            "counts": {"mesh": 0, "light": 0, "camera": 0, "grease_pencil": 0},
+            "frame_range": [1, 250],
+            "fps": 24,
+            "keyframe_count": 0
+        },
         "checks": [],
         "duration_ms": 0
     }
