@@ -3,7 +3,7 @@ import { useStore } from '../state/useStore';
 import type { EnginePreset } from '../state/useStore';
 import {
   Clock, CheckCircle as CheckCircle2, WarningCircle as AlertCircle, Cube as Box, Sparkle as Sparkles, Gear as Settings2,
-  CaretDown as ChevronDown, CaretRight as ChevronRight, Lightning as Zap, Stack as Layers, Sun, Activity,
+  CaretDown as ChevronDown, CaretRight as ChevronRight, Lightning as Zap, Stack as Layers, Sun, Pulse,
   RadioButton as CircleDot, SpinnerGap as Loader2, XCircle, Cpu, HardDrives as HardDrive, Gauge, ArrowSquareOut
 } from '@phosphor-icons/react';
 import { invoke } from '@tauri-apps/api/core';
@@ -21,7 +21,7 @@ export function Sidebar() {
   const history        = useStore((s) => s.history);
   const loadHistory    = useStore((s) => s.loadHistory);
   const doctorStatus   = useStore((s) => s.doctorStatus);
-  const blenderVersion = useStore((s) => s.blenderVersion);
+  
   const enginePreset   = useStore((s) => s.enginePreset);
   const setEnginePreset = useStore((s) => s.setEnginePreset);
   const executionQueue  = useStore((s) => s.executionQueue);
@@ -99,7 +99,7 @@ export function Sidebar() {
           <div className="text-2xs text-flinch-text-muted">Cursor for Blender</div>
         </div>
         <div className="ml-auto flex items-center gap-1.5">
-          <StatusDot status={doctorStatus} />
+          {doctorStatus === 'ok' ? <div className="w-2 h-2 rounded-full bg-flinch-success" title="Blender OK" /> : doctorStatus === 'checking' ? <div className="w-2 h-2 rounded-full bg-flinch-warning animate-pulse" title="Checking..." /> : <div className="w-2 h-2 rounded-full bg-flinch-error" title="Blender not found" />}
         </div>
       </div>
 
@@ -132,7 +132,7 @@ export function Sidebar() {
           >
             <div className="flex items-center gap-1.5">
               {envOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-              <Activity size={10} className="text-flinch-accent" />
+              <Pulse size={10} className="text-flinch-accent" />
               <span>Environment</span>
             </div>
             <span className="text-[10px] lowercase font-normal opacity-70">os live</span>
@@ -141,7 +141,7 @@ export function Sidebar() {
             <div className="mt-1.5 space-y-2 pl-1 bg-flinch-surface/20 p-2 rounded-lg border border-flinch-border-dim/50">
               <div className="flex items-center justify-between text-xs mb-1">
                 <div className="flex items-center gap-1.5 truncate">
-                  <Activity size={13} className="text-flinch-success shrink-0" weight="bold" />
+                  <Pulse size={13} className="text-flinch-success shrink-0" weight="bold" />
                   <span className="text-flinch-text font-medium truncate">
                     Performance Metrics
                   </span>

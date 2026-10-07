@@ -169,16 +169,14 @@ export const useStore = create<RunState>()(
 
         try {
           const result = await invoke<AgentResult>('run_prompt', { prompt });
-          const attempts = 'attempts' in result ? result.attempts : [];
           set({
             finalResult: result,
-            attempts: attempts,
+            attempts: result.attempts,
             isRunning: false,
-            activeAttemptIndex: Math.max(0, attempts.length - 1),
+            activeAttemptIndex: Math.max(0, result.attempts.length - 1),
           });
-          const isSuccess = result.type === 'Success';
-          addMessage('assistant', isSuccess ? '✨ Script executed successfully!' : (result.type === 'FatalError' ? `❌ Fatal Error: ${result.error}` : '❌ Script failed after all attempts.'));
-          updateQueue(queueId, { status: isSuccess ? 'done' : 'error' });
+          addMessage('assistant', result.success ? '✨ Script executed successfully!' : '❌ Script failed after all attempts.');
+          updateQueue(queueId, { status: result.success ? 'done' : 'error' });
           await loadHistory();
         } catch (e: unknown) {
           const msg = e instanceof Error ? e.message : String(e);

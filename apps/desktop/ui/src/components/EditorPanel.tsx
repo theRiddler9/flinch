@@ -3,7 +3,7 @@ import { Editor, DiffEditor } from '@monaco-editor/react';
 import {
   WarningCircle as AlertCircle, CheckCircle as CheckCircle2, DownloadSimple as Download, FileCode,
   CaretDown as ChevronDown, CaretRight as ChevronRight, Copy, Code as Code2, Sparkle as Sparkles,
-  Columns, PlaySquare,
+  Columns, Video,
 } from '@phosphor-icons/react';
 import { invoke } from '@tauri-apps/api/core';
 import { tempDir, join } from '@tauri-apps/api/path';
@@ -161,7 +161,7 @@ export function EditorPanel() {
               )}
               title="Full Viewport & Timeline Scrubber"
             >
-              <PlaySquare size={11} /> <span>Viewport & Timeline</span>
+              <Video size={11} /> <span>Viewport & Timeline</span>
             </button>
             <button
               onClick={() => setViewMode('code')}
