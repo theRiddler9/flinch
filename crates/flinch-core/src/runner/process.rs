@@ -50,13 +50,16 @@ impl Runner {
             .await
             .map_err(FlinchError::IoError)?;
 
-        let mut cmd = Command::new(&self.config.blender_bin);
+        let blender_bin = Self::resolve_blender_binary(&self.config.blender_bin);
+        let harness_path = Self::resolve_harness_path();
+
+        let mut cmd = Command::new(&blender_bin);
         cmd.arg("-b")
             .arg("--factory-startup")
             .arg("--python-exit-code")
             .arg("1")
             .arg("--python")
-            .arg("blender/harness.py")
+            .arg(&harness_path)
             .arg("--")
             .arg("--script")
             .arg(&script_path)
@@ -193,5 +196,78 @@ impl Runner {
                 "result.json not found".to_string(),
             ))
         }
+    }
+
+    pub fn resolve_blender_binary(path_str: &str) -> String {
+        let p = std::path::Path::new(path_str);
+        if p.is_dir() {
+            let exe = p.join("blender.exe");
+            if exe.exists() {
+                return exe.to_string_lossy().to_string();
+            }
+            let bin = p.join("blender");
+            if bin.exists() {
+                return bin.to_string_lossy().to_string();
+            }
+        }
+        if p.is_file() && p.exists() {
+            return p.to_string_lossy().to_string();
+        }
+        #[cfg(target_os = "windows")]
+        {
+            let candidates = [
+                r"C:\Program Files\Blender Foundation\Blender 5.2\blender.exe",
+                r"C:\Program Files\Blender Foundation\Blender 5.1\blender.exe",
+                r"C:\Program Files\Blender Foundation\Blender 5.0\blender.exe",
+                r"C:\Program Files\Blender Foundation\Blender 4.5\blender.exe",
+                r"C:\Program Files\Blender Foundation\Blender 4.4\blender.exe",
+                r"C:\Program Files\Blender Foundation\Blender 4.3\blender.exe",
+                r"C:\Program Files\Blender Foundation\Blender 4.2\blender.exe",
+            ];
+            for cand in candidates {
+                if std::path::Path::new(cand).exists() {
+                    return cand.to_string();
+                }
+            }
+            if let Ok(entries) = std::fs::read_dir(r"C:\Program Files\Blender Foundation") {
+                for entry in entries.flatten() {
+                    let exe = entry.path().join("blender.exe");
+                    if exe.exists() {
+                        return exe.to_string_lossy().to_string();
+                    }
+                }
+            }
+        }
+        path_str.to_string()
+    }
+
+    pub fn resolve_harness_path() -> std::path::PathBuf {
+        let direct = std::path::PathBuf::from("blender/harness.py");
+        if direct.exists() {
+            return direct;
+        }
+        if let Ok(mut current) = std::env::current_dir() {
+            loop {
+                let candidate = current.join("blender").join("harness.py");
+                if candidate.exists() {
+                    return candidate;
+                }
+                if !current.pop() {
+                    break;
+                }
+            }
+        }
+        if let Ok(mut exe) = std::env::current_exe() {
+            loop {
+                let candidate = exe.join("blender").join("harness.py");
+                if candidate.exists() {
+                    return candidate;
+                }
+                if !exe.pop() {
+                    break;
+                }
+            }
+        }
+        direct
     }
 }
