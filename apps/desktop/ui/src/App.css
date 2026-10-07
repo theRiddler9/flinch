@@ -24,6 +24,21 @@
   --flinch-warning:    #ffb84d;
 }
 
+.theme-light {
+  --flinch-bg-deep:    #f5f5f5;
+  --flinch-bg-base:    #ffffff;
+  --flinch-bg-panel:   #e8e8e8;
+  --flinch-bg-surface: #d1d1d1;
+  --flinch-bg-hover:   #c4c4c4;
+  --flinch-border:     #d0d0d0;
+  --flinch-border-dim: #e0e0e0;
+  --flinch-text:       #1a1a1a;
+  --flinch-text-dim:   #4a4a4a;
+  --flinch-text-muted: #6a6a6a;
+  --flinch-accent:     #3a6fd0;
+  --flinch-accent-dim: #2a5bb0;
+}
+
 /* GPU-accelerated smooth scrollbars */
 * {
   scrollbar-width: thin;

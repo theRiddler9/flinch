@@ -8,10 +8,7 @@ import { cn } from '../lib/utils';
 import { useState, useEffect } from 'react';
 
 export function EditorPanel() {
-  const attempts = useStore((s) => s.attempts);
-  const activeAttemptIndex = useStore((s) => s.activeAttemptIndex);
-  const setActiveAttempt = useStore((s) => s.setActiveAttempt);
-  const finalResult = useStore((s) => s.finalResult);
+  const { attempts, activeAttemptIndex, setActiveAttempt, finalResult, theme, fontSize } = useStore();
   const [errorExpanded, setErrorExpanded] = useState(true);
 
   const [activeTab, setActiveTab] = useState<'code' | 'preview'>('code');
@@ -242,7 +239,7 @@ export function EditorPanel() {
         ) : isDiffMode ? (
           <DiffEditor
             language="python"
-            theme="vs-dark"
+            theme={theme === 'light' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: light)').matches) ? "vs-light" : "vs-dark"}
             original={previousAttempt.script}
             modified={currentAttempt.script}
             options={{
@@ -250,9 +247,9 @@ export function EditorPanel() {
               minimap: { enabled: false },
               scrollBeyondLastLine: false,
               renderSideBySide: false,
-              fontSize: 13,
+              fontSize: fontSize,
               fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
-              lineHeight: 20,
+              lineHeight: Math.round(fontSize * 1.5),
               padding: { top: 12, bottom: 12 },
               smoothScrolling: true,
               cursorBlinking: 'smooth',
@@ -262,15 +259,15 @@ export function EditorPanel() {
         ) : (
           <Editor
             language="python"
-            theme="vs-dark"
+            theme={theme === 'light' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: light)').matches) ? "vs-light" : "vs-dark"}
             value={currentAttempt.script}
             options={{
               readOnly: true,
               minimap: { enabled: false },
               scrollBeyondLastLine: false,
-              fontSize: 13,
+              fontSize: fontSize,
               fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
-              lineHeight: 20,
+              lineHeight: Math.round(fontSize * 1.5),
               padding: { top: 12, bottom: 12 },
               smoothScrolling: true,
               cursorBlinking: 'smooth',

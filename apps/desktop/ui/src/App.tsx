@@ -10,7 +10,23 @@ import { SettingsModal } from './components/SettingsModal';
 import './App.css';
 
 function App() {
-  const { appendToken } = useStore();
+  const { appendToken, theme } = useStore();
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === 'dark') {
+      root.classList.remove('theme-light');
+    } else if (theme === 'light') {
+      root.classList.add('theme-light');
+    } else {
+      // system
+      if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+        root.classList.add('theme-light');
+      } else {
+        root.classList.remove('theme-light');
+      }
+    }
+  }, [theme]);
 
   useEffect(() => {
     let tokenBuffer = '';

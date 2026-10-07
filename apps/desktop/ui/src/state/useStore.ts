@@ -30,6 +30,11 @@ interface RunState {
   isSettingsOpen: boolean;
   doctorStatus: 'checking' | 'ok' | 'error';
 
+  theme: 'system' | 'dark' | 'light';
+  fontSize: number;
+
+  setTheme: (theme: 'system' | 'dark' | 'light') => void;
+  setFontSize: (size: number) => void;
   setPrompt: (prompt: string) => void;
   appendToken: (token: string) => void;
   addMessage: (role: 'user' | 'assistant', content: string) => void;
@@ -53,7 +58,11 @@ export const useStore = create<RunState>((set, get) => ({
   history: [],
   isSettingsOpen: false,
   doctorStatus: 'checking',
+  theme: 'system',
+  fontSize: 13,
 
+  setTheme: (theme) => set({ theme }),
+  setFontSize: (fontSize) => set({ fontSize }),
   setPrompt: (prompt) => set({ prompt }),
 
   appendToken: (token) => {
