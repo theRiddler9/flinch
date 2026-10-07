@@ -14,6 +14,7 @@ interface FrameScrubberProps {
 }
 
 export function FrameScrubber({ script, frameRange }: FrameScrubberProps) {
+  const isRunning = useStore((state) => state.isRunning);
   const [frame, setFrame]       = useState(frameRange[0]);
   const [playing, setPlaying]   = useState(false);
   const [loading, setLoading]   = useState(false);
@@ -22,7 +23,7 @@ export function FrameScrubber({ script, frameRange }: FrameScrubberProps) {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const canRender = Boolean(script && script.includes('import bpy'));
+  const canRender = Boolean(script && script.includes('import bpy') && !isRunning);
 
   const renderFrame = useCallback(async (f: number) => {
     if (!script || !script.includes('import bpy')) {
@@ -120,7 +121,7 @@ export function FrameScrubber({ script, frameRange }: FrameScrubberProps) {
           <div className="flex flex-col items-center gap-2 text-flinch-error p-4 text-center max-w-sm">
             <AlertCircle size={22} />
             <span className="text-xs font-semibold">Frame Render Error</span>
-            <div className="text-2xs font-mono text-flinch-text-muted whitespace-pre-wrap break-all max-h-24 overflow-y-auto w-full text-left p-2 bg-black/20 rounded">{error}</div>
+            <div className="text-2xs font-mono text-flinch-text-muted whitespace-pre-wrap break-words max-h-24 overflow-y-auto w-full text-left p-2 bg-black/20 rounded">{error}</div>
             <button
               onClick={() => renderFrame(frame)}
               className="mt-2 px-3 py-1 bg-flinch-surface text-flinch-text text-2xs rounded border border-flinch-border hover:bg-flinch-surface/80"
@@ -143,9 +144,13 @@ export function FrameScrubber({ script, frameRange }: FrameScrubberProps) {
         ) : !loading && !error ? (
           <div className="text-center p-6 text-flinch-text-muted">
             <div className="text-4xl mb-3 opacity-30">🧊</div>
-            <div className="text-sm font-medium text-flinch-text-dim mb-1">Live Viewport Ready</div>
+            <div className="text-sm font-medium text-flinch-text-dim mb-1">
+              {isRunning ? "Generating Script..." : "Live Viewport Ready"}
+            </div>
             <div className="text-xs text-flinch-text-muted max-w-xs mb-3">
-              {canRender
+              {isRunning
+                ? "Waiting for the script to finish generating before rendering frames."
+                : canRender
                 ? "Click below to render the initial frame preview."
                 : "Enter a prompt in the chat. Flinch will compile the Blender script and stream frame renders here."}
             </div>
