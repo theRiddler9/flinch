@@ -229,6 +229,15 @@ def main():
                     cam_obj.location = (6.0, -6.0, 4.5)
                     cam_obj.rotation_euler = (1.1, 0.0, 0.785)
                     bpy.context.scene.camera = cam_obj
+                    
+                # Auto-add fallback light if scene has no lights
+                has_light = any(obj.type == 'LIGHT' for obj in bpy.context.scene.collection.all_objects)
+                if not has_light:
+                    light_data = bpy.data.lights.new(name="FlinchPreviewLight", type='SUN')
+                    light_data.energy = 3.0
+                    light_obj = bpy.data.objects.new(name="FlinchPreviewLight", object_data=light_data)
+                    bpy.context.scene.collection.objects.link(light_obj)
+                    light_obj.rotation_euler = (0.785, 0.0, 0.785)
                 bpy.context.scene.render.resolution_x = 640
                 bpy.context.scene.render.resolution_y = 360
                 bpy.context.scene.render.resolution_percentage = 100
