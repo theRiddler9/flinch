@@ -169,7 +169,7 @@ export function SettingsModal({
                       className={cn("w-full bg-flinch-deep border rounded px-3 py-2.5 text-sm text-flinch-text outline-none flinch-transition", errors.blender_bin ? "border-flinch-error focus:border-flinch-error" : "border-flinch-border focus:border-flinch-text-muted")}
                       value={settings.blender_bin}
                       onChange={(e) => setSettings({ ...settings, blender_bin: e.target.value })}
-                      placeholder="/Applications/Blender.app/Contents/MacOS/Blender or C:\\Program Files\\Blender Foundation\\Blender 4.5\\blender.exe"
+                      placeholder="/Applications/Blender.app/Contents/MacOS/Blender or C:\\Program Files\\Blender Foundation\\Blender 5.2\\blender.exe"
                     />
                     <p className="text-xs text-flinch-text-muted mt-1">If "blender" is in your system PATH, you can just type "blender". Otherwise, provide the full path.</p>
                     {errors.blender_bin && <div className="text-xs text-flinch-error mt-1">{errors.blender_bin}</div>}

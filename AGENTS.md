@@ -32,7 +32,7 @@ The gap between the two is the evidence that execution feedback works. **Never f
 | CLI | `clap`; the `flinch` binary runs evals, doctor checks, and the harness headlessly |
 | Tests | `cargo test`, `bun test`, `pytest` (pure-Python helpers only) |
 
-**Pinned Blender version:** `blender/VERSION` (default: latest **LTS**, currently 4.5 LTS; verify before pinning). The `bpy` API changes between versions, especially **Grease Pencil (v3 API in 4.3+)**. The pinned version goes in the LLM system prompt and in every eval report.
+**Pinned Blender version:** `blender/VERSION` (default: latest **LTS**, currently 5.2 LTS; verify before pinning). The `bpy` API changes between versions, especially **Grease Pencil (v3 API in 4.3+)**. The pinned version goes in the LLM system prompt and in every eval report.
 
 ### Why Rust owns the agent loop
 Evals and the desktop app call the **exact same Rust code** (`flinch-core`). There is no second implementation to drift, so the eval measures the real product. The UI is only a view layer.
@@ -149,7 +149,7 @@ Result JSON (stable; bump `schema` on any change; mirror as Rust types in `flinc
   "stdout": "...",
   "warnings": ["..."],
   "scene_stats": {
-    "blender_version": "4.5.x",
+    "blender_version": "5.2.x",
     "objects": [{ "name": "Cube", "type": "MESH", "has_animation": true }],
     "counts": { "mesh": 1, "light": 1, "camera": 1, "grease_pencil": 0 },
     "frame_range": [1, 120],
