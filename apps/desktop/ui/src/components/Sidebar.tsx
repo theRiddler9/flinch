@@ -4,7 +4,7 @@ import type { EnginePreset } from '../state/useStore';
 import {
   Clock, CheckCircle2, AlertCircle, Box, Sparkles, Settings2,
   ChevronDown, ChevronRight, Zap, Layers, Sun, Activity,
-  CircleDot, Loader2, XCircle,
+  CircleDot, Loader2, XCircle, Cpu, HardDrive, Gauge,
 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import type { AgentResult } from '../bindings/AgentResult';
@@ -23,24 +23,22 @@ function StatusDot({ status }: { status: 'checking' | 'ok' | 'error' }) {
 }
 
 export function Sidebar() {
-  const history      = useStore((s) => s.history);
-  const loadHistory  = useStore((s) => s.loadHistory);
-  const doctorStatus = useStore((s) => s.doctorStatus);
+  const history        = useStore((s) => s.history);
+  const loadHistory    = useStore((s) => s.loadHistory);
+  const doctorStatus   = useStore((s) => s.doctorStatus);
   const blenderVersion = useStore((s) => s.blenderVersion);
-  const enginePreset = useStore((s) => s.enginePreset);
+  const enginePreset   = useStore((s) => s.enginePreset);
   const setEnginePreset = useStore((s) => s.setEnginePreset);
   const executionQueue  = useStore((s) => s.executionQueue);
+  const systemMetrics   = useStore((s) => s.systemMetrics);
+  const fetchMetrics    = useStore((s) => s.fetchMetrics);
 
-  const [envOpen, setEnvOpen] = useState(true);
+  const [envOpen, setEnvOpen]     = useState(true);
   const [queueOpen, setQueueOpen] = useState(true);
-  // Simulated VRAM — in real app wire from a Tauri sysinfo command
-  const vramUsed = 4.2;
-  const vramTotal = 16;
-  const vramPct = vramUsed / vramTotal;
 
   useEffect(() => { loadHistory(); }, [loadHistory]);
 
-  // Doctor check on mount to get blender version
+  // Doctor check on mount
   useEffect(() => {
     invoke<{ blender_ok: boolean; blender_version: string | null; provider_ok: boolean }>('check_doctor')
       .then((res) => {
@@ -52,6 +50,15 @@ export function Sidebar() {
       })
       .catch(() => useStore.setState({ doctorStatus: 'error' }));
   }, []);
+
+  // Poll system performance metrics every 2.5s for real workloads
+  useEffect(() => {
+    fetchMetrics();
+    const interval = setInterval(() => {
+      fetchMetrics();
+    }, 2500);
+    return () => clearInterval(interval);
+  }, [fetchMetrics]);
 
   const loadSession = useCallback(async (id: string) => {
     try {
@@ -67,6 +74,24 @@ export function Sidebar() {
     }
   }, []);
 
+  // Performance helpers
+  const cpuPct = systemMetrics?.cpu_percent ?? 0;
+  const ramUsed = systemMetrics?.ram_used_gb ?? 0;
+  const ramTotal = systemMetrics?.ram_total_gb ?? 16;
+  const ramPct = systemMetrics?.ram_percent ?? 0;
+
+  const gpuName = systemMetrics?.gpu_name ?? 'NVIDIA GPU';
+  const gpuUtil = systemMetrics?.gpu_percent ?? 0;
+  const vramUsed = systemMetrics?.vram_used_gb ?? 0;
+  const vramTotal = systemMetrics?.vram_total_gb ?? 8;
+  const vramPct = systemMetrics?.vram_percent ?? 0;
+
+  const diskUsed = systemMetrics?.disk_used_gb ?? 0;
+  const diskTotal = systemMetrics?.disk_total_gb ?? 512;
+  const diskPct = systemMetrics?.disk_percent ?? 0;
+  const diskR = systemMetrics?.disk_read_mbps ?? 0;
+  const diskW = systemMetrics?.disk_write_mbps ?? 0;
+
   return (
     <div className="w-64 bg-flinch-base border-r border-flinch-border-dim flex flex-col h-full overflow-hidden">
       {/* Brand header */}
@@ -78,7 +103,9 @@ export function Sidebar() {
           <div className="text-sm font-bold tracking-tight text-flinch-text">Flinch</div>
           <div className="text-2xs text-flinch-text-muted">Cursor for Blender</div>
         </div>
-        <StatusDot status={doctorStatus} />
+        <div className="ml-auto flex items-center gap-1.5">
+          <StatusDot status={doctorStatus} />
+        </div>
       </div>
 
       {/* New session button */}
@@ -102,50 +129,128 @@ export function Sidebar() {
       </div>
 
       <div className="flex-1 overflow-y-auto space-y-0 pb-2">
-        {/* ── Environment ── */}
+        {/* ── Environment (Real OS System Performance) ── */}
         <section className="px-3 pt-2">
           <button
             onClick={() => setEnvOpen(!envOpen)}
-            className="w-full flex items-center gap-1.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-flinch-text-muted hover:text-flinch-text-dim flinch-transition"
+            className="w-full flex items-center justify-between py-1 text-[11px] font-semibold uppercase tracking-wider text-flinch-text-muted hover:text-flinch-text-dim flinch-transition"
           >
-            {envOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-            <Activity size={10} /> Environment
+            <div className="flex items-center gap-1.5">
+              {envOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+              <Activity size={10} className="text-flinch-accent" />
+              <span>Environment</span>
+            </div>
+            <span className="text-[10px] lowercase font-normal opacity-70">os live</span>
           </button>
           {envOpen && (
-            <div className="mt-1.5 space-y-2 pl-1">
-              {/* Blender Path */}
-              <div className="flex items-center gap-2 text-xs">
-                <Box size={11} className={cn("shrink-0", doctorStatus === 'ok' ? "text-flinch-success" : "text-flinch-error")} />
-                <span className="text-flinch-text-dim truncate">
-                  {blenderVersion ?? (doctorStatus === 'error' ? 'Not found' : 'Checking...')}
+            <div className="mt-1.5 space-y-2 pl-1 bg-flinch-surface/20 p-2 rounded-lg border border-flinch-border-dim/50">
+              {/* Blender Status */}
+              <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-1.5 truncate">
+                  <Box size={11} className={cn("shrink-0", doctorStatus === 'ok' ? "text-flinch-success" : "text-flinch-error")} />
+                  <span className="text-flinch-text font-medium truncate">
+                    {blenderVersion ?? (doctorStatus === 'error' ? 'Blender Not Found' : 'Checking...')}
+                  </span>
+                </div>
+                <span className={cn("text-2xs font-semibold uppercase px-1.5 py-0.2 rounded", doctorStatus === 'ok' ? "bg-flinch-success/15 text-flinch-success" : "bg-flinch-error/15 text-flinch-error")}>
+                  {doctorStatus === 'ok' ? 'Ready' : 'Fix'}
                 </span>
               </div>
 
-              {/* VRAM Bar */}
+              {/* CPU Metric */}
               <div>
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-2xs text-flinch-text-muted flex items-center gap-1">
-                    <Zap size={9} /> VRAM
+                <div className="flex items-center justify-between text-2xs mb-1">
+                  <span className="text-flinch-text-muted flex items-center gap-1">
+                    <Cpu size={10} /> CPU ({systemMetrics?.cpu_cores ?? 8}c)
                   </span>
-                  <span className={cn(
-                    "text-2xs font-mono",
-                    vramPct > 0.8 ? "text-flinch-warning" : "text-flinch-text-muted"
-                  )}>
-                    {vramUsed}GB / {vramTotal}GB
+                  <span className="font-mono text-flinch-text-dim">
+                    {cpuPct.toFixed(1)}%
                   </span>
                 </div>
                 <div className="h-1.5 rounded-full bg-flinch-surface overflow-hidden">
                   <div
                     className={cn(
                       "h-full rounded-full flinch-transition",
-                      vramPct > 0.8 ? "bg-flinch-warning" : "bg-flinch-accent"
+                      cpuPct > 85 ? "bg-flinch-error" : cpuPct > 65 ? "bg-flinch-warning" : "bg-blue-400"
                     )}
-                    style={{ width: `${Math.min(vramPct * 100, 100)}%` }}
+                    style={{ width: `${Math.min(cpuPct, 100)}%` }}
                   />
                 </div>
-                {vramPct > 0.8 && (
-                  <p className="text-2xs text-flinch-warning mt-0.5">⚠ High VRAM — render may crash</p>
+              </div>
+
+              {/* RAM / Memory Metric */}
+              <div>
+                <div className="flex items-center justify-between text-2xs mb-1">
+                  <span className="text-flinch-text-muted flex items-center gap-1">
+                    <Gauge size={10} /> Memory
+                  </span>
+                  <span className="font-mono text-flinch-text-dim">
+                    {ramUsed.toFixed(1)}G / {ramTotal.toFixed(0)}G ({ramPct.toFixed(0)}%)
+                  </span>
+                </div>
+                <div className="h-1.5 rounded-full bg-flinch-surface overflow-hidden">
+                  <div
+                    className={cn(
+                      "h-full rounded-full flinch-transition",
+                      ramPct > 85 ? "bg-flinch-error" : ramPct > 70 ? "bg-flinch-warning" : "bg-emerald-400"
+                    )}
+                    style={{ width: `${Math.min(ramPct, 100)}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* GPU & VRAM Metric */}
+              <div>
+                <div className="flex items-center justify-between text-2xs mb-1">
+                  <span className="text-flinch-text-muted flex items-center gap-1 truncate max-w-[130px]" title={gpuName}>
+                    <Zap size={10} /> {gpuName.replace('NVIDIA GeForce ', '')}
+                  </span>
+                  <span className={cn(
+                    "font-mono text-2xs",
+                    vramPct > 80 ? "text-flinch-warning font-semibold" : "text-flinch-text-dim"
+                  )}>
+                    {vramUsed.toFixed(1)}G / {vramTotal.toFixed(0)}G
+                  </span>
+                </div>
+                <div className="h-1.5 rounded-full bg-flinch-surface overflow-hidden">
+                  <div
+                    className={cn(
+                      "h-full rounded-full flinch-transition",
+                      vramPct > 80 ? "bg-flinch-warning" : "bg-flinch-accent"
+                    )}
+                    style={{ width: `${Math.min(vramPct, 100)}%` }}
+                  />
+                </div>
+                {gpuUtil > 0 && (
+                  <div className="text-[10px] text-flinch-text-muted mt-0.5 font-mono">
+                    Compute load: {gpuUtil.toFixed(0)}%
+                  </div>
                 )}
+                {vramPct > 80 && (
+                  <p className="text-[10px] text-flinch-warning mt-0.5">⚠ High VRAM ({vramPct.toFixed(0)}%) — near OOM limit</p>
+                )}
+              </div>
+
+              {/* Disk Storage & I/O Metric */}
+              <div>
+                <div className="flex items-center justify-between text-2xs mb-1">
+                  <span className="text-flinch-text-muted flex items-center gap-1">
+                    <HardDrive size={10} /> Disk Storage
+                  </span>
+                  <span className="font-mono text-flinch-text-dim">
+                    {diskUsed.toFixed(0)}G / {diskTotal.toFixed(0)}G
+                  </span>
+                </div>
+                <div className="h-1.5 rounded-full bg-flinch-surface overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-purple-400 flinch-transition"
+                    style={{ width: `${Math.min(diskPct, 100)}%` }}
+                  />
+                </div>
+                <div className="flex items-center justify-between text-[10px] font-mono text-flinch-text-muted mt-1">
+                  <span>I/O Read: {diskR.toFixed(1)} MB/s</span>
+                  <span>Write: {diskW.toFixed(1)} MB/s</span>
+                </div>
               </div>
             </div>
           )}
@@ -154,7 +259,7 @@ export function Sidebar() {
         {/* ── Engine Presets ── */}
         <section className="px-3 pt-3">
           <div className="flex items-center gap-1.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-flinch-text-muted">
-            <Layers size={10} /> Engine
+            <Layers size={10} /> Engine Preset
           </div>
           <div className="mt-1.5 space-y-1">
             {ENGINE_OPTIONS.map((opt) => (
