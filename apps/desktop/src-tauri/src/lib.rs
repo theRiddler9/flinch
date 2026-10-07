@@ -661,7 +661,7 @@ pub fn run() {
 
             let metrics = Arc::new(RwLock::new(SystemMetrics::default()));
             let metrics_worker = metrics.clone();
-            tokio::spawn(async move {
+            tauri::async_runtime::spawn(async move {
                 let mut sys = sysinfo::System::new_all();
                 sys.refresh_all();
                 let mut last_instant = std::time::Instant::now();
