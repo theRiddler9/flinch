@@ -37,6 +37,9 @@
   --flinch-text-muted: #6a6a6a;
   --flinch-accent:     #3a6fd0;
   --flinch-accent-dim: #2a5bb0;
+  --flinch-success:    #35a16d;
+  --flinch-error:      #d63655;
+  --flinch-warning:    #e09e36;
 }
 
 /* GPU-accelerated smooth scrollbars */
