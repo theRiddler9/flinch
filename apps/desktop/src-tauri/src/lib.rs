@@ -6,6 +6,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{Emitter, Manager, State};
+use tokio::sync::RwLock;
 
 #[derive(Clone, serde::Serialize)]
 struct LogEvent {
@@ -13,9 +14,25 @@ struct LogEvent {
 }
 
 struct AppState {
-    agent: Agent,
-    runner: Runner,
+    agent: RwLock<Agent>,
+    runner: RwLock<Runner>,
     store: std::sync::Mutex<Store>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct AppSettings {
+    blender_bin: String,
+    base_url: String,
+    model: String,
+    api_key: String,
+}
+
+#[derive(serde::Serialize)]
+struct DoctorResult {
+    blender_ok: bool,
+    blender_version: Option<String>,
+    provider_ok: bool,
+    provider_error: Option<String>,
 }
 
 #[tauri::command]
@@ -34,8 +51,8 @@ async fn run_prompt(
         }
     };
 
-    let result = state
-        .agent
+    let agent = state.agent.read().await;
+    let result = agent
         .run_task(&prompt, None, log_cb)
         .await
         .map_err(|e| e.to_string())?;
@@ -54,8 +71,8 @@ async fn export_blend(
     script: String,
     out_path: String,
 ) -> Result<(), String> {
-    state
-        .runner
+    let runner = state.runner.read().await;
+    runner
         .run_script(
             &script,
             None,
@@ -82,8 +99,8 @@ async fn export_preview(
     script: String,
     out_path: String,
 ) -> Result<(), String> {
-    state
-        .runner
+    let runner = state.runner.read().await;
+    runner
         .run_script(
             &script,
             None,
@@ -123,6 +140,146 @@ async fn get_session(
 ) -> Result<AgentResult, String> {
     let store = state.store.lock().unwrap();
     store.get_session(&session_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_settings() -> Result<AppSettings, String> {
+    let config_path = resolve_workspace_path("flinch.toml");
+    let config_str = fs::read_to_string(&config_path).unwrap_or_default();
+    let app_config: Option<flinch_core::config::AppConfig> = toml::from_str(&config_str).ok();
+
+    let (base_url, model, blender_bin) = match app_config {
+        Some(cfg) => (cfg.provider.base_url, cfg.provider.model, cfg.blender.bin),
+        None => (
+            "http://localhost:11434/v1".to_string(),
+            "llama3".to_string(),
+            "blender".to_string(),
+        ),
+    };
+
+    let api_key = match keyring::Entry::new("flinch", "api_key") {
+        Ok(entry) => entry.get_password().unwrap_or_default(),
+        Err(_) => "".to_string(),
+    };
+
+    Ok(AppSettings {
+        blender_bin,
+        base_url,
+        model,
+        api_key,
+    })
+}
+
+#[tauri::command]
+async fn save_settings(
+    state: State<'_, Arc<AppState>>,
+    settings: AppSettings,
+) -> Result<(), String> {
+    // Save to keyring
+    if let Ok(entry) = keyring::Entry::new("flinch", "api_key") {
+        let _ = entry.set_password(&settings.api_key);
+    }
+
+    // Save to flinch.toml
+    let config = flinch_core::config::AppConfig {
+        blender: flinch_core::config::BlenderConfig {
+            bin: settings.blender_bin.clone(),
+        },
+        provider: flinch_core::config::ProviderConfig {
+            kind: "openai_compatible".to_string(),
+            base_url: settings.base_url.clone(),
+            model: settings.model.clone(),
+            api_key_env: "".to_string(),
+            max_concurrency: 1,
+        },
+    };
+
+    let toml_str = toml::to_string(&config).map_err(|e| e.to_string())?;
+    let config_path = resolve_workspace_path("flinch.toml");
+    fs::write(&config_path, toml_str).map_err(|e| e.to_string())?;
+
+    // Update agent and runner
+    let provider = OpenAiCompatProvider::new(settings.base_url, settings.model, settings.api_key);
+    let runner_new = Runner::new(RunnerConfig {
+        blender_bin: settings.blender_bin.clone(),
+        timeout_sec: 60,
+    });
+
+    let sys_path = resolve_workspace_path("prompts/system.md");
+    let system_prompt = fs::read_to_string(&sys_path).unwrap_or_default();
+    let fb_path = resolve_workspace_path("prompts/feedback.md");
+    let feedback_prompt = fs::read_to_string(&fb_path).unwrap_or_default();
+
+    let agent_new = Agent::new(
+        Arc::new(provider),
+        Arc::new(Runner::new(RunnerConfig {
+            blender_bin: settings.blender_bin.clone(),
+            timeout_sec: 60,
+        })),
+        AgentConfig {
+            max_attempts: 3,
+            system_prompt,
+            feedback_prompt_template: feedback_prompt,
+        },
+    );
+
+    *state.runner.write().await = runner_new;
+    *state.agent.write().await = agent_new;
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn check_doctor() -> Result<DoctorResult, String> {
+    let settings = get_settings().await?;
+
+    // Check Blender
+    let blender_out = tokio::process::Command::new(&settings.blender_bin)
+        .arg("--version")
+        .output()
+        .await;
+
+    let (blender_ok, blender_version) = match blender_out {
+        Ok(out) if out.status.success() => {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            let first_line = stdout
+                .lines()
+                .next()
+                .unwrap_or("Unknown version")
+                .to_string();
+            (true, Some(first_line))
+        }
+        _ => (false, None),
+    };
+
+    // Check Provider
+    let client = reqwest::Client::new();
+    let url = format!("{}/models", settings.base_url.trim_end_matches('/'));
+
+    let req = client.get(&url);
+    let req = if !settings.api_key.is_empty() {
+        req.header("Authorization", format!("Bearer {}", settings.api_key))
+    } else {
+        req
+    };
+
+    let (provider_ok, provider_error) = match req.send().await {
+        Ok(resp) => {
+            if resp.status().is_success() {
+                (true, None)
+            } else {
+                (false, Some(format!("HTTP {}", resp.status())))
+            }
+        }
+        Err(e) => (false, Some(e.to_string())),
+    };
+
+    Ok(DoctorResult {
+        blender_ok,
+        blender_version,
+        provider_ok,
+        provider_error,
+    })
 }
 
 fn resolve_workspace_path(path: &str) -> PathBuf {
@@ -181,11 +338,20 @@ pub fn run() {
                 ),
             };
 
-            let api_key = if !api_key_env.is_empty() {
+            let mut api_key = if !api_key_env.is_empty() {
                 std::env::var(&api_key_env).unwrap_or_default()
             } else {
                 std::env::var("OPENAI_API_KEY").unwrap_or_default()
             };
+
+            // Override with keyring if available
+            if let Ok(entry) = keyring::Entry::new("flinch", "api_key") {
+                if let Ok(pw) = entry.get_password() {
+                    if !pw.is_empty() {
+                        api_key = pw;
+                    }
+                }
+            }
 
             let provider = OpenAiCompatProvider::new(base_url, model, api_key);
             let runner = Runner::new(RunnerConfig {
@@ -214,8 +380,8 @@ pub fn run() {
             );
 
             app.manage(Arc::new(AppState {
-                agent,
-                runner,
+                agent: RwLock::new(agent),
+                runner: RwLock::new(runner),
                 store: std::sync::Mutex::new(store),
             }));
             Ok(())
@@ -230,7 +396,10 @@ pub fn run() {
             get_session,
             export_blend,
             export_script,
-            export_preview
+            export_preview,
+            get_settings,
+            save_settings,
+            check_doctor
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

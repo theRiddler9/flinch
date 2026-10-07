@@ -27,6 +27,7 @@ interface RunState {
   error: string | null;
   history: SessionHistory[];
   logs: string[];
+  isSettingsOpen: boolean;
 
   setPrompt: (prompt: string) => void;
   appendToken: (token: string) => void;
@@ -49,6 +50,7 @@ export const useStore = create<RunState>((set, get) => ({
   error: null,
   logs: [],
   history: [],
+  isSettingsOpen: false,
 
   setPrompt: (prompt) => set({ prompt }),
 

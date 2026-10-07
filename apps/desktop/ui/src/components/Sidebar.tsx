@@ -1,6 +1,6 @@
 import { useEffect, useCallback } from 'react';
 import { useStore } from '../state/useStore';
-import { Clock, CheckCircle2, AlertCircle, Box, Sparkles } from 'lucide-react';
+import { Clock, CheckCircle2, AlertCircle, Box, Sparkles, Settings2 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import type { AgentResult } from '../bindings/AgentResult';
 import { cn } from '../lib/utils';
@@ -113,8 +113,17 @@ export function Sidebar() {
       </div>
 
       {/* Footer */}
-      <div className="px-4 py-2 border-t border-flinch-border-dim text-2xs text-flinch-text-muted">
-        Blender 4.5 LTS · OpenAI Compatible
+      <div className="px-4 py-3 border-t border-flinch-border-dim flex items-center justify-between">
+        <div className="text-2xs text-flinch-text-muted">
+          Blender 4.5 LTS
+        </div>
+        <button
+          onClick={() => useStore.setState({ isSettingsOpen: true })}
+          className="text-flinch-text-muted hover:text-flinch-text flinch-transition rounded p-1 hover:bg-flinch-surface"
+          title="Preferences"
+        >
+          <Settings2 size={14} />
+        </button>
       </div>
     </div>
   );

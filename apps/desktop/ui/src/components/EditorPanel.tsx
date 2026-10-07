@@ -1,10 +1,11 @@
 import { useStore } from '../state/useStore';
 import { Editor, DiffEditor } from '@monaco-editor/react';
-import { AlertCircle, CheckCircle2, Download, FileCode, ChevronDown, ChevronRight } from 'lucide-react';
-import { invoke } from '@tauri-apps/api/core';
+import { AlertCircle, CheckCircle2, Download, FileCode, ChevronDown, ChevronRight, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { invoke, convertFileSrc } from '@tauri-apps/api/core';
+import { tempDir, join } from '@tauri-apps/api/path';
 import { save } from '@tauri-apps/plugin-dialog';
 import { cn } from '../lib/utils';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 export function EditorPanel() {
   const attempts = useStore((s) => s.attempts);
@@ -13,8 +14,19 @@ export function EditorPanel() {
   const finalResult = useStore((s) => s.finalResult);
   const [errorExpanded, setErrorExpanded] = useState(true);
 
+  const [activeTab, setActiveTab] = useState<'code' | 'preview'>('code');
+  const [previewSrc, setPreviewSrc] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+
   const currentAttempt = attempts[activeAttemptIndex];
   const previousAttempt = activeAttemptIndex > 0 ? attempts[activeAttemptIndex - 1] : null;
+
+  useEffect(() => {
+    setPreviewSrc(null);
+    setPreviewError(null);
+    setActiveTab('code');
+  }, [currentAttempt?.script]);
 
   if (attempts.length === 0) {
     return (
@@ -45,6 +57,29 @@ export function EditorPanel() {
     const path = await save({ filters: [{ name: 'Python', extensions: ['py'] }] });
     if (path) {
       await invoke('export_script', { script: currentAttempt.script, outPath: path });
+    }
+  };
+
+  const handlePreview = async () => {
+    setActiveTab('preview');
+    if (previewSrc) return;
+    
+    setPreviewLoading(true);
+    setPreviewError(null);
+    
+    try {
+      const tDir = await tempDir();
+      const randStr = Math.random().toString(36).substring(7);
+      const outPath = await join(tDir, `flinch_preview_${randStr}.png`);
+      
+      await invoke('export_preview', { script: currentAttempt.script, outPath });
+      
+      const assetUrl = convertFileSrc(outPath);
+      setPreviewSrc(assetUrl);
+    } catch (err: any) {
+      setPreviewError(err.toString());
+    } finally {
+      setPreviewLoading(false);
     }
   };
 
@@ -82,6 +117,30 @@ export function EditorPanel() {
 
         {/* Status + Export actions */}
         <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 bg-flinch-surface/40 p-0.5 rounded-md border border-flinch-border-dim">
+            <button
+              onClick={() => setActiveTab('code')}
+              className={cn(
+                "flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium flinch-transition",
+                activeTab === 'code' ? "bg-flinch-surface text-flinch-text shadow-sm" : "text-flinch-text-dim hover:text-flinch-text"
+              )}
+            >
+              <FileCode size={12} />
+              Code
+            </button>
+            <button
+              onClick={handlePreview}
+              className={cn(
+                "flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium flinch-transition",
+                activeTab === 'preview' ? "bg-flinch-surface text-flinch-text shadow-sm" : "text-flinch-text-dim hover:text-flinch-text"
+              )}
+            >
+              <ImageIcon size={12} />
+              Preview
+            </button>
+          </div>
+          <div className="w-px h-5 bg-flinch-border-dim mx-1" />
+
           {finalResult && (
             <div className={cn(
               "flinch-badge",
@@ -120,9 +179,26 @@ export function EditorPanel() {
         </div>
       </div>
 
-      {/* ── Monaco Editor ───────────────────────────────────── */}
-      <div className="flex-1 relative">
-        {isDiffMode ? (
+      {/* ── Monaco Editor / Preview ───────────────────────────────────── */}
+      <div className="flex-1 relative overflow-hidden flex flex-col">
+        {activeTab === 'preview' ? (
+          <div className="flex-1 flex items-center justify-center bg-black/20 p-4">
+            {previewLoading ? (
+              <div className="flex flex-col items-center gap-3 text-flinch-text-muted">
+                <Loader2 className="w-6 h-6 animate-spin" />
+                <span className="text-xs">Rendering preview...</span>
+              </div>
+            ) : previewError ? (
+              <div className="flex flex-col items-center gap-3 text-flinch-error max-w-md text-center">
+                <AlertCircle className="w-8 h-8" />
+                <span className="text-sm font-medium">Failed to render preview</span>
+                <span className="text-xs opacity-80 font-mono break-all">{previewError}</span>
+              </div>
+            ) : previewSrc ? (
+              <img src={previewSrc} alt="Preview" className="max-w-full max-h-full object-contain rounded-md shadow-lg" />
+            ) : null}
+          </div>
+        ) : isDiffMode ? (
           <DiffEditor
             language="python"
             theme="vs-dark"

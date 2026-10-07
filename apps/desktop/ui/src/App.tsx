@@ -1,10 +1,12 @@
 import { useEffect } from 'react';
 import { listen } from '@tauri-apps/api/event';
+import { invoke } from '@tauri-apps/api/core';
 import { useStore } from './state/useStore';
 import { Layout } from './components/Layout';
 import { Sidebar } from './components/Sidebar';
 import { ChatPanel } from './components/ChatPanel';
 import { EditorPanel } from './components/EditorPanel';
+import { SettingsModal } from './components/SettingsModal';
 import './App.css';
 
 function App() {
@@ -50,11 +52,28 @@ function App() {
     };
   }, [appendToken]);
 
+  const isSettingsOpen = useStore((s) => s.isSettingsOpen);
+  const closeSettings = () => useStore.setState({ isSettingsOpen: false });
+
+  useEffect(() => {
+    // Run Doctor on startup
+    invoke<{ blender_ok: boolean; provider_ok: boolean }>('check_doctor')
+      .then((res) => {
+        if (!res.blender_ok || !res.provider_ok) {
+          useStore.setState({ isSettingsOpen: true });
+        }
+      })
+      .catch(() => {
+        useStore.setState({ isSettingsOpen: true });
+      });
+  }, []);
+
   return (
     <Layout>
       <Sidebar />
       <ChatPanel />
       <EditorPanel />
+      <SettingsModal isOpen={isSettingsOpen} onClose={closeSettings} />
     </Layout>
   );
 }
