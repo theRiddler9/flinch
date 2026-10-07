@@ -15,6 +15,7 @@ interface FrameScrubberProps {
 
 export function FrameScrubber({ script, frameRange }: FrameScrubberProps) {
   const isRunning = useStore((state) => state.isRunning);
+  const finalResult = useStore((state) => state.finalResult);
   const [frame, setFrame]       = useState(frameRange[0]);
   const [playing, setPlaying]   = useState(false);
   const [loading, setLoading]   = useState(false);
@@ -23,7 +24,8 @@ export function FrameScrubber({ script, frameRange }: FrameScrubberProps) {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const canRender = Boolean(script && script.includes('import bpy') && !isRunning);
+  const isFailedRun = finalResult && finalResult.success === false;
+  const canRender = Boolean(script && script.includes('import bpy') && !isRunning && !isFailedRun);
 
   const renderFrame = useCallback(async (f: number) => {
     if (!script || !script.includes('import bpy')) {
@@ -145,11 +147,13 @@ export function FrameScrubber({ script, frameRange }: FrameScrubberProps) {
           <div className="text-center p-6 text-flinch-text-muted">
             <div className="text-4xl mb-3 opacity-30">🧊</div>
             <div className="text-sm font-medium text-flinch-text-dim mb-1">
-              {isRunning ? "Generating Script..." : "Live Viewport Ready"}
+              {isRunning ? "Generating Script..." : isFailedRun ? "Script Execution Failed" : "Live Viewport Ready"}
             </div>
             <div className="text-xs text-flinch-text-muted max-w-xs mb-3">
               {isRunning
                 ? "Waiting for the script to finish generating before rendering frames."
+                : isFailedRun
+                ? "The generated script contains errors. Check the terminal below."
                 : canRender
                 ? "Click below to render the initial frame preview."
                 : "Enter a prompt in the chat. Flinch will compile the Blender script and stream frame renders here."}

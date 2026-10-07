@@ -12,24 +12,7 @@ import { cn } from '../lib/utils';
 import { useState, useEffect, useRef } from 'react';
 import { FrameScrubber } from './FrameScrubber';
 
-const DEFAULT_SCRIPT = `import bpy
-
-# Default Workspace Animation (Blender 5.2)
-bpy.ops.wm.read_factory_settings(use_empty=True)
-
-# Add a bouncing cube with keyframed z-location
-bpy.ops.mesh.primitive_cube_add(size=2.0, location=(0, 0, 0))
-cube = bpy.context.active_object
-cube.name = "BouncingCube"
-
-for f, z in [(1, 0.0), (15, 2.5), (30, 0.0), (45, 2.5), (60, 0.0)]:
-    cube.location.z = z
-    cube.keyframe_insert(data_path="location", frame=f)
-
-bpy.context.scene.frame_start = 1
-bpy.context.scene.frame_end = 60
-bpy.context.scene.frame_set(1)
-`;
+const DEFAULT_SCRIPT = ``;
 
 export function EditorPanel() {
   const { attempts, activeAttemptIndex, setActiveAttempt, finalResult, theme, fontSize } = useStore();
@@ -142,69 +125,69 @@ export function EditorPanel() {
           )}
 
           {/* View mode toggle */}
-          <div className="flex items-center gap-0.5 bg-flinch-surface/60 p-0.5 rounded border border-flinch-border-dim ml-2">
+          <div className="flex items-center gap-1 bg-flinch-surface/60 p-1 rounded-md border border-flinch-border-dim ml-2">
             <button
               onClick={() => setViewMode('split')}
               className={cn(
-                "px-2 py-0.5 text-2xs font-medium rounded flinch-transition flex items-center gap-1",
+                "px-2.5 py-1 text-xs font-medium rounded flinch-transition flex items-center gap-1.5",
                 viewMode === 'split' ? "bg-flinch-accent text-white shadow-xs" : "text-flinch-text-muted hover:text-flinch-text"
               )}
               title="Split View (Code + Viewport)"
             >
-              <Columns size={11} /> <span>Split</span>
+              <Columns size={14} /> <span>Split</span>
             </button>
             <button
               onClick={() => setViewMode('viewport')}
               className={cn(
-                "px-2 py-0.5 text-2xs font-medium rounded flinch-transition flex items-center gap-1",
+                "px-2.5 py-1 text-xs font-medium rounded flinch-transition flex items-center gap-1.5",
                 viewMode === 'viewport' ? "bg-flinch-accent text-white shadow-xs" : "text-flinch-text-muted hover:text-flinch-text"
               )}
               title="Full Viewport & Timeline Scrubber"
             >
-              <Video size={11} /> <span>Viewport & Timeline</span>
+              <Video size={14} /> <span>Viewport & Timeline</span>
             </button>
             <button
               onClick={() => setViewMode('code')}
               className={cn(
-                "px-2 py-0.5 text-2xs font-medium rounded flinch-transition flex items-center gap-1",
+                "px-2.5 py-1 text-xs font-medium rounded flinch-transition flex items-center gap-1.5",
                 viewMode === 'code' ? "bg-flinch-accent text-white shadow-xs" : "text-flinch-text-muted hover:text-flinch-text"
               )}
               title="Code Editor Only"
             >
-              <Code2 size={11} /> <span>Code</span>
+              <Code2 size={14} /> <span>Code</span>
             </button>
           </div>
         </div>
 
         {/* Status + Export actions */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           {finalResult && (
             <div className={cn(
-              "flinch-badge",
+              "flinch-badge text-xs px-2.5 py-1",
               finalResult.success
                 ? "text-flinch-success bg-flinch-success/10 border border-flinch-success/20"
                 : "text-flinch-error bg-flinch-error/10 border border-flinch-error/20"
             )}>
-              {finalResult.success ? <><CheckCircle2 size={10} /> Passed</> : <><AlertCircle size={10} /> Failed</>}
+              {finalResult.success ? <><CheckCircle2 size={14} /> Passed</> : <><AlertCircle size={14} /> Failed</>}
             </div>
           )}
           <div className="w-px h-5 bg-flinch-border-dim mx-1" />
 
           <button onClick={handleCopyCode} title="Copy Code"
-            className="flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium flinch-transition flinch-focus-ring text-flinch-text-dim hover:text-flinch-text bg-flinch-surface/40 hover:bg-flinch-surface border border-flinch-border-dim">
-            <Copy size={12} />
+            className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium flinch-transition flinch-focus-ring text-flinch-text-dim hover:text-flinch-text bg-flinch-surface/40 hover:bg-flinch-surface border border-flinch-border-dim">
+            <Copy size={14} /> Copy Code
           </button>
           <button onClick={handleOpenExternal} title="Open in External Editor"
-            className="flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium flinch-transition flinch-focus-ring text-flinch-text-dim hover:text-flinch-text bg-flinch-surface/40 hover:bg-flinch-surface border border-flinch-border-dim">
-            <Code2 size={12} />
+            className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium flinch-transition flinch-focus-ring text-flinch-text-dim hover:text-flinch-text bg-flinch-surface/40 hover:bg-flinch-surface border border-flinch-border-dim">
+            <Code2 size={14} />
           </button>
           <button onClick={handleExportBlend}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium flinch-transition flinch-focus-ring text-flinch-text-dim hover:text-flinch-text bg-flinch-surface/40 hover:bg-flinch-surface border border-flinch-border-dim">
-            <Download size={12} /> .blend
+            className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium flinch-transition flinch-focus-ring text-flinch-text-dim hover:text-flinch-text bg-flinch-surface/40 hover:bg-flinch-surface border border-flinch-border-dim">
+            <Download size={14} /> .blend
           </button>
           <button onClick={handleSavePy}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium flinch-transition flinch-focus-ring text-flinch-text-dim hover:text-flinch-text bg-flinch-surface/40 hover:bg-flinch-surface border border-flinch-border-dim">
-            <FileCode size={12} /> .py
+            className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium flinch-transition flinch-focus-ring text-flinch-text-dim hover:text-flinch-text bg-flinch-surface/40 hover:bg-flinch-surface border border-flinch-border-dim">
+            <FileCode size={14} /> .py
           </button>
         </div>
       </div>
@@ -317,9 +300,9 @@ export function EditorPanel() {
             onClick={() => setErrorExpanded(!errorExpanded)}
             className="w-full flex items-center gap-2 px-4 py-2 text-flinch-error hover:bg-flinch-error/5 flinch-transition text-sm font-medium"
           >
-            {errorExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-            <AlertCircle size={14} />
-            <span>Stage: {currentAttempt.harness_result.stage}</span>
+            {errorExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+            <AlertCircle size={16} />
+            <span>Terminal Output: {currentAttempt.harness_result.stage} error</span>
             {currentAttempt.harness_result.error && (
               <span className="ml-2 text-xs text-flinch-error/70 font-mono truncate">
                 {(currentAttempt.harness_result.error as any).error_type ?? (currentAttempt.harness_result.error as any).type}
@@ -327,14 +310,14 @@ export function EditorPanel() {
             )}
           </button>
           {errorExpanded && (
-            <div className="max-h-40 overflow-y-auto px-4 pb-3 flinch-slide-in space-y-3">
+            <div className="max-h-64 overflow-y-auto px-4 pb-4 flinch-slide-in space-y-3 bg-[#0d0d0d] border-t border-flinch-border-dim">
               {currentAttempt.harness_result.error && (
-                <div className="font-mono text-xs leading-relaxed">
-                  <div className="text-flinch-error font-semibold mb-1">
+                <div className="font-mono text-sm leading-relaxed mt-2">
+                  <div className="text-flinch-error font-bold mb-2">
                     {(currentAttempt.harness_result.error as any).error_type ?? (currentAttempt.harness_result.error as any).type}: {currentAttempt.harness_result.error.message}
                   </div>
                   {currentAttempt.harness_result.error.traceback && (
-                    <pre className="text-flinch-error/60 whitespace-pre-wrap text-2xs leading-relaxed">
+                    <pre className="text-gray-300 whitespace-pre-wrap text-xs leading-relaxed bg-[#1e1e1e] p-3 rounded-md border border-gray-800">
                       {currentAttempt.harness_result.error.traceback}
                     </pre>
                   )}

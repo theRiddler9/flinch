@@ -362,10 +362,10 @@ export function Sidebar() {
                       console.error("Failed to delete session", err);
                     }
                   }}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 opacity-0 group-hover:opacity-100 hover:bg-flinch-error/20 hover:text-flinch-error text-flinch-text-muted rounded-md flinch-transition"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-2 opacity-0 group-hover:opacity-100 hover:bg-flinch-error/20 hover:text-flinch-error text-flinch-text-muted rounded-md flinch-transition"
                   title="Delete Session"
                 >
-                  <Trash size={12} />
+                  <Trash size={16} />
                 </button>
               </div>
             ))}
