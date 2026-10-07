@@ -1,6 +1,6 @@
 import { useStore } from '../state/useStore';
 import { Editor, DiffEditor } from '@monaco-editor/react';
-import { AlertCircle, CheckCircle2, Download, FileCode, ChevronDown, ChevronRight, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Download, FileCode, ChevronDown, ChevronRight, Image as ImageIcon, Loader2, Copy, Code2 } from 'lucide-react';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { tempDir, join } from '@tauri-apps/api/path';
 import { save } from '@tauri-apps/plugin-dialog';
@@ -83,6 +83,27 @@ export function EditorPanel() {
     }
   };
 
+  const handleCopyCode = async () => {
+    try {
+      await navigator.clipboard.writeText(currentAttempt.script);
+    } catch (err) {
+      console.error('Failed to copy', err);
+    }
+  };
+
+  const handleOpenExternal = async () => {
+    try {
+      const { open } = await import('@tauri-apps/plugin-opener');
+      const tDir = await tempDir();
+      const randStr = Math.random().toString(36).substring(7);
+      const outPath = await join(tDir, `flinch_script_${randStr}.py`);
+      await invoke('export_script', { script: currentAttempt.script, outPath });
+      await open(outPath);
+    } catch (err) {
+      console.error('Failed to open in external editor', err);
+    }
+  };
+
   return (
     <div className="flex-1 flex flex-col min-w-0 bg-flinch-deep">
       {/* ── Toolbar ─────────────────────────────────────────── */}
@@ -156,6 +177,26 @@ export function EditorPanel() {
             </div>
           )}
           <div className="w-px h-5 bg-flinch-border-dim mx-1" />
+          <button
+            onClick={handleCopyCode}
+            title="Copy Code"
+            className={cn(
+              "flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium flinch-transition flinch-focus-ring",
+              "text-flinch-text-dim hover:text-flinch-text bg-flinch-surface/40 hover:bg-flinch-surface border border-flinch-border-dim"
+            )}
+          >
+            <Copy size={12} />
+          </button>
+          <button
+            onClick={handleOpenExternal}
+            title="Open in External Editor"
+            className={cn(
+              "flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium flinch-transition flinch-focus-ring",
+              "text-flinch-text-dim hover:text-flinch-text bg-flinch-surface/40 hover:bg-flinch-surface border border-flinch-border-dim"
+            )}
+          >
+            <Code2 size={12} />
+          </button>
           <button
             onClick={handleExportBlend}
             className={cn(
