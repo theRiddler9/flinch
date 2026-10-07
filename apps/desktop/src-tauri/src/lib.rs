@@ -218,6 +218,14 @@ async fn render_frame(
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(format!("Blender frame render failed: {}", stderr));
     }
+
+    if !std::path::Path::new(&out_path).exists() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "The image was not created. This usually means the script crashed during execution before it could reach the render phase.\nStderr: {}",
+            stderr
+        ));
+    }
     Ok(())
 }
 

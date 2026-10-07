@@ -103,7 +103,16 @@ export function Sidebar() {
           <div className="text-2xs text-flinch-text-muted">Cursor for Blender</div>
         </div>
         <div className="ml-auto flex items-center gap-1.5">
-          {doctorStatus === 'ok' ? <div className="w-2 h-2 rounded-full bg-flinch-success" title="Blender OK" /> : doctorStatus === 'checking' ? <div className="w-2 h-2 rounded-full bg-flinch-warning animate-pulse" title="Checking..." /> : <div className="w-2 h-2 rounded-full bg-flinch-error" title="Blender not found" />}
+          {doctorStatus === 'ok' ? (
+            <div className="w-2 h-2 rounded-full bg-flinch-success" title="System OK" />
+          ) : doctorStatus === 'checking' ? (
+            <div className="w-2 h-2 rounded-full bg-flinch-warning animate-pulse" title="Checking..." />
+          ) : (
+            <div 
+              className="w-2 h-2 rounded-full bg-flinch-error" 
+              title={!blenderVersion ? "Blender not found" : !providerOnline ? "Provider offline" : "System Error"} 
+            />
+          )}
         </div>
       </div>
 
