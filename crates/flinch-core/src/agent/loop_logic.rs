@@ -130,10 +130,44 @@ impl Agent {
                 continue;
             }
 
-            let harness_res = self
+            let harness_res = match self
                 .runner
                 .run_script(&script, spec, None, &mut log_cb)
-                .await?;
+                .await
+            {
+                Ok(res) => res,
+                Err(e) => {
+                    log_cb(format!("[runner error] {}", e)).await;
+                    HarnessResult {
+                        schema: 1,
+                        ok: false,
+                        stage: "runner_error".to_string(),
+                        error: Some(crate::harness::ErrorDetail {
+                            error_type: "RunnerError".to_string(),
+                            message: e.to_string(),
+                            traceback: "".to_string(),
+                            line: 0,
+                        }),
+                        stdout: "".to_string(),
+                        warnings: vec![],
+                        scene_stats: crate::harness::SceneStats {
+                            blender_version: "".to_string(),
+                            objects: vec![],
+                            counts: crate::harness::CountsStat {
+                                mesh: 0,
+                                light: 0,
+                                camera: 0,
+                                grease_pencil: 0,
+                            },
+                            frame_range: (1, 120),
+                            fps: 24,
+                            keyframe_count: 0,
+                        },
+                        checks: vec![],
+                        duration_ms: 0,
+                    }
+                }
+            };
 
             attempts_record.push(AttemptRecord {
                 prompt: user_prompt.to_string(),
