@@ -59,6 +59,7 @@ CRITICAL DIRECTIVES TO PREVENT HALLUCINATIONS & CRASHES:
 
 5. MODIFIERS:
    - To add a modifier: mod = obj.modifiers.new(name="Subsurf", type='SUBSURF')
+   - CRITICAL: For subdivision, the property is mod.levels = 2 and mod.render_levels = 2. NEVER use mod.subdivisions (it does not exist and will crash!).
 
 6. ANIMATION:
    - Animate properties by inserting keyframes directly:
