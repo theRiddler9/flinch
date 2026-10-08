@@ -78,7 +78,7 @@ export function ChatPanel() {
                 ? "ml-6 p-3.5 bg-flinch-accent/15 text-flinch-text border border-flinch-accent/20 rounded-tr-none"
                 : "mr-6 p-3.5 bg-flinch-surface/80 text-flinch-text-dim border border-flinch-border-dim rounded-tl-none"
             )}
-            style={{ animationDelay: ${i * 20}ms }}
+            style={{ animationDelay: `${i * 20}ms` }}
           >
             <div className="flex items-center gap-2 mb-2 pb-2 border-b border-white/5">
               {msg.role === 'user' ? (
