@@ -1,7 +1,7 @@
 import { useEffect, useCallback, useState } from 'react';
 import { useStore } from '../state/useStore';
 import {
-  Clock, CheckCircle as CheckCircle2, WarningCircle as AlertCircle, Cube, Sparkle as Sparkles, Gear as Settings2, MagicWand,
+  Clock, CheckCircle as CheckCircle2, WarningCircle as AlertCircle, Sparkle as Sparkles, Gear as Settings2, MagicWand,
   CaretDown as ChevronDown, CaretRight as ChevronRight, Lightning as Zap, Sun, Pulse,
   RadioButton as CircleDot, SpinnerGap as Loader2, XCircle, Cpu, HardDrives as HardDrive, Gauge, ArrowSquareOut, Trash
 } from '@phosphor-icons/react';
