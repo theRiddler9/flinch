@@ -222,7 +222,10 @@ def ensure_camera(scene, frame, notes):
     if reason is None:
         return "scene"
 
-    frames = sorted({scene.frame_start, (scene.frame_start + scene.frame_end) // 2, scene.frame_end, frame})
+    step = max(1, (scene.frame_end - scene.frame_start) // 10)
+    frames_to_sample = set(range(scene.frame_start, scene.frame_end + 1, step))
+    frames_to_sample.update({scene.frame_start, scene.frame_end, frame})
+    frames = sorted(frames_to_sample)
     make_preview_camera(scene, union_bounds(scene, frames))
     scene.frame_set(frame)
     notes.append(f"Used auto-framed preview camera: {reason}.")
