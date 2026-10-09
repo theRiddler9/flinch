@@ -22,16 +22,15 @@ export function FrameScrubber({ script, frameRange }: FrameScrubberProps) {
   const [previewSrc, setPreviewSrc] = useState<string | null>(null);
   const [error, setError]       = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const playTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const isFailedRun = finalResult && finalResult.success === false;
   const canRender = Boolean(script && script.includes('import bpy') && !isRunning && !isFailedRun);
 
-  const renderFrame = useCallback(async (f: number) => {
+  const renderFrame = useCallback(async (f: number, silent = false) => {
     if (!script || !script.includes('import bpy')) {
       return;
     }
-    setLoading(true);
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const tDir = await tempDir();
@@ -42,19 +41,19 @@ export function FrameScrubber({ script, frameRange }: FrameScrubberProps) {
     } catch (e: any) {
       setError(String(e));
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [script]);
 
   // Debounced render on frame change if canRender
   useEffect(() => {
-    if (!canRender) return;
+    if (!canRender || playing) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       renderFrame(frame);
     }, 350);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [frame, renderFrame, canRender]);
+  }, [frame, renderFrame, canRender, playing]);
 
   // Reset preview when script changes
   useEffect(() => {
@@ -67,19 +66,35 @@ export function FrameScrubber({ script, frameRange }: FrameScrubberProps) {
 
   // Playback
   useEffect(() => {
+    let active = true;
     if (playing) {
-      playTimerRef.current = setInterval(() => {
-        setFrame((f) => {
-          const next = f + 1;
-          if (next > frameRange[1]) { setPlaying(false); return frameRange[0]; }
-          return next;
-        });
-      }, 200);
-    } else {
-      if (playTimerRef.current) clearInterval(playTimerRef.current);
+      const loop = async () => {
+        let currentFrame = frame;
+        while (active) {
+          const start = Date.now();
+          await renderFrame(currentFrame, true);
+          if (!active) break;
+          
+          const elapsed = Date.now() - start;
+          const delay = Math.max(0, (1000 / 24) - elapsed);
+          if (delay > 0) {
+            await new Promise((r) => setTimeout(r, delay));
+          }
+          if (!active) break;
+
+          currentFrame++;
+          if (currentFrame > frameRange[1]) {
+            setPlaying(false);
+            setFrame(frameRange[0]);
+            break;
+          }
+          setFrame(currentFrame);
+        }
+      };
+      loop();
     }
-    return () => { if (playTimerRef.current) clearInterval(playTimerRef.current); };
-  }, [playing, frameRange]);
+    return () => { active = false; };
+  }, [playing, frameRange, renderFrame]);
 
   const totalFrames = frameRange[1] - frameRange[0];
 
