@@ -188,8 +188,8 @@ async fn render_frame(
 
     let harness_path = resolve_workspace_path("blender/harness.py");
 
-    let output_result = tokio::process::Command::new(&blender_bin)
-        .arg("-b")
+    let mut cmd = tokio::process::Command::new(&blender_bin);
+    cmd.arg("-b")
         .arg("--factory-startup")
         .arg("--python-exit-code")
         .arg("1")
@@ -205,25 +205,32 @@ async fn render_frame(
         .arg("--frame")
         .arg(frame.to_string())
         .arg("--engine")
-        .arg(&engine)
-        .output()
-        .await;
+        .arg(&engine);
 
-    let _ = std::fs::remove_file(&script_path);
-    let _ = std::fs::remove_file(&result_path);
+    #[cfg(windows)]
+    {
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+
+    let output_result = cmd.output().await;
 
     let output = output_result.map_err(|e| format!("Failed to spawn blender: {}", e))?;
 
     if !output.status.success() {
+        let _ = std::fs::remove_file(&script_path);
+        let _ = std::fs::remove_file(&result_path);
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(format!("Blender frame render failed: {}", stderr));
     }
 
     if !std::path::Path::new(&out_path).exists() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        let result_json = std::fs::read_to_string(&result_path).unwrap_or_else(|_| "No result.json".to_string());
+        let _ = std::fs::remove_file(&script_path);
+        let _ = std::fs::remove_file(&result_path);
         return Err(format!(
-            "The image was not created. This usually means the script crashed during execution before it could reach the render phase.\nStderr: {}",
-            stderr
+            "The image was not created. This usually means the script crashed during execution before it could reach the render phase.\nStderr: {}\nResult JSON: {}",
+            stderr, result_json
         ));
     }
 
@@ -231,6 +238,8 @@ async fn render_frame(
     let img_bytes = std::fs::read(&out_path).map_err(|e| e.to_string())?;
     let b64 = general_purpose::STANDARD.encode(&img_bytes);
     let _ = std::fs::remove_file(&out_path); // clean up
+    let _ = std::fs::remove_file(&script_path);
+    let _ = std::fs::remove_file(&result_path);
 
     Ok(format!("data:image/png;base64,{}", b64))
 }

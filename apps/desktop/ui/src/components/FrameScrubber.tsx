@@ -26,9 +26,9 @@ export function FrameScrubber({ script, frameRange }: FrameScrubberProps) {
   const isFailedRun = finalResult && finalResult.success === false;
   const canRender = Boolean(script && script.includes('import bpy') && !isRunning && !isFailedRun);
 
-  const renderFrame = useCallback(async (f: number, silent = false) => {
+  const renderFrame = useCallback(async (f: number, silent = false): Promise<boolean> => {
     if (!script || !script.includes('import bpy')) {
-      return;
+      return false;
     }
     if (!silent) setLoading(true);
     setError(null);
@@ -38,8 +38,10 @@ export function FrameScrubber({ script, frameRange }: FrameScrubberProps) {
       const engine = useStore.getState().enginePreset;
       const b64DataUri = await invoke<string>('render_frame', { script, frame: f, outPath, engine });
       setPreviewSrc(b64DataUri);
+      return true;
     } catch (e: any) {
       setError(String(e));
+      return false;
     } finally {
       if (!silent) setLoading(false);
     }
@@ -72,9 +74,14 @@ export function FrameScrubber({ script, frameRange }: FrameScrubberProps) {
         let currentFrame = frame;
         while (active) {
           const start = Date.now();
-          await renderFrame(currentFrame, true);
+          const renderSuccess = await renderFrame(currentFrame, true);
           if (!active) break;
           
+          if (!renderSuccess) {
+            setPlaying(false);
+            break;
+          }
+
           const elapsed = Date.now() - start;
           const delay = Math.max(0, (1000 / 24) - elapsed);
           if (delay > 0) {
