@@ -225,7 +225,8 @@ async fn render_frame(
 
     if !std::path::Path::new(&out_path).exists() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        let result_json = std::fs::read_to_string(&result_path).unwrap_or_else(|_| "No result.json".to_string());
+        let result_json =
+            std::fs::read_to_string(&result_path).unwrap_or_else(|_| "No result.json".to_string());
         let _ = std::fs::remove_file(&script_path);
         let _ = std::fs::remove_file(&result_path);
         return Err(format!(
