@@ -3,7 +3,8 @@ bin = "C:\\Program Files\\Blender Foundation\\Blender 5.2\\blender.exe"
 
 [provider]
 kind = "openai_compatible"
-base_url = "http://localhost:11434/v1"
-model = "qwen3.5:9b"
-api_key_env = ""
+base_url = "https://integrate.api.nvidia.com/v1"
+model = "meta/llama-3.3-70b-instruct"
+api_key = "" # Paste your NVIDIA NIM API key here (nvapi-...) or any provider key
+api_key_env = "NVIDIA_API_KEY"
 max_concurrency = 1
