@@ -1,5 +1,4 @@
 import { invoke } from '@tauri-apps/api/core';
-import { tempDir, join } from '@tauri-apps/api/path';
 import {
   Play, Pause, SkipBack, SkipForward,
   WarningCircle as AlertCircle, SpinnerGap as Loader2, Sparkle as Sparkles, ArrowsClockwise as RefreshCw,
