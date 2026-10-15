@@ -84,7 +84,44 @@ CRITICAL DIRECTIVES TO PREVENT HALLUCINATIONS & CRASHES:
      light.data.energy = 5.0
      ```
 
-8. FINAL OUTPUT:
+8. GREASE PENCIL (BLENDER 5.2 v3 API):
+   - CRITICAL: Blender 5.2 uses Grease Pencil v3! The old v2 API (`frame.strokes.new()`, `point.co`) DOES NOT EXIST and WILL CRASH!
+   - In GPv3, strokes live on `frame.drawing`:
+     ```python
+     # 1. Create GP object and link to scene
+     gp_data = bpy.data.grease_pencils.new("GreasePencil")
+     gp_obj = bpy.data.objects.new("GreasePencil", gp_data)
+     bpy.context.scene.collection.objects.link(gp_obj)
+
+     # 2. Add layer and frame
+     layer = gp_data.layers.new("Lines")
+     frame = layer.frames.new(1)
+     drawing = frame.drawing
+
+     # 3. Add stroke: drawing.add_strokes([num_points_in_stroke])
+     drawing.add_strokes([4])
+     stroke = drawing.strokes[0]
+     # In GPv3, coordinates are set via point.position (NOT point.co!):
+     stroke.points[0].position = (0.0, 0.0, 0.0)
+     stroke.points[0].radius = 0.05
+     stroke.points[1].position = (1.0, 0.0, 0.0)
+     stroke.points[1].radius = 0.05
+     stroke.points[2].position = (1.0, 1.0, 0.0)
+     stroke.points[2].radius = 0.05
+     stroke.points[3].position = (0.0, 1.0, 0.0)
+     stroke.points[3].radius = 0.05
+     stroke.cyclic = True # for closed shapes
+
+     # 4. Materials for Grease Pencil
+     mat = bpy.data.materials.new("GPMaterial")
+     bpy.data.materials.create_gpencil_data(mat)
+     mat.grease_pencil.color = (0.0, 0.0, 0.0, 1.0) # stroke outline color
+     mat.grease_pencil.show_stroke = True
+     gp_obj.data.materials.append(mat)
+     stroke.material_index = 0
+     ```
+
+9. FINAL OUTPUT:
    - Output the COMPLETE executable script in a single fenced ```python block.
    - NO markdown commentary before or after the code.
    - NO explanations. Just the code.
