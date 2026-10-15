@@ -249,7 +249,9 @@ def configure_output(scene, path):
     r.resolution_x = 640
     r.resolution_y = 360
     r.resolution_percentage = 100
-    r.filepath = path
+    # Blender requires forward slashes on Windows; backslashes cause silent write failures
+    # when use_file_extension=False is set (it treats the path as a prefix, not a full path).
+    r.filepath = path.replace("\\", "/")
     r.use_file_extension = False          # write exactly to `path`
     r.image_settings.file_format = "PNG"
     _set(r.image_settings, "color_mode", "RGB")
@@ -371,6 +373,9 @@ def render_preview(scene, path, frame, engine):
     A render problem must not turn a working script into a failed one, so this is
     reported separately under result["render"].
     """
+    # Normalize to forward slashes; Blender's Python on Windows handles them but
+    # backslashes in r.filepath with use_file_extension=False cause silent failures.
+    path = path.replace("\\", "/")
     notes = []
     info = {
         "ok": False, "path": path, "frame": frame, "engine": None, "camera": None,
@@ -424,6 +429,48 @@ def render_preview(scene, path, frame, engine):
     return info
 
 
+def render_sequence_preview(scene, render_dir, start_f, end_f, engine):
+    """Render a sequence of frames [start_f, end_f] into render_dir as frame_<f>.png.
+    Executes in a single Blender process for maximum performance (~30ms/frame).
+    """
+    render_dir = os.path.abspath(render_dir).replace("\\", "/")
+    os.makedirs(render_dir, exist_ok=True)
+    notes = []
+    info = {"ok": False, "frames": [], "notes": notes, "error": None}
+    try:
+        try:
+            obj = bpy.context.object
+            if obj is not None and obj.mode != "OBJECT":
+                bpy.ops.object.mode_set(mode="OBJECT")
+        except Exception:
+            pass
+
+        # Frame camera and lights
+        scene.frame_set(start_f)
+        bpy.context.view_layer.update()
+        ensure_camera(scene, start_f, notes)
+        ensure_light(scene, notes)
+        apply_engine(scene, engine, notes)
+
+        # Configure output format and resolution
+        test_path = f"{render_dir}/test.png"
+        configure_output(scene, test_path)
+
+        r = scene.render
+        for f in range(start_f, end_f + 1):
+            scene.frame_set(f)
+            bpy.context.view_layer.update()
+            frame_path = f"{render_dir}/frame_{f}.png"
+            r.filepath = frame_path
+            res = bpy.ops.render.render(write_still=True, scene=scene.name)
+            if "FINISHED" in res and os.path.isfile(frame_path) and os.path.getsize(frame_path) > 0:
+                info["frames"].append(f)
+        info["ok"] = len(info["frames"]) > 0
+    except Exception as e:
+        info["error"] = {"type": type(e).__name__, "message": str(e), "traceback": traceback.format_exc()}
+    return info
+
+
 # --------------------------------------------------------------------------------------
 # Main
 # --------------------------------------------------------------------------------------
@@ -460,6 +507,9 @@ def main():
     parser.add_argument("--save-blend", required=False, help="Path to save the .blend file")
     parser.add_argument("--render-image", required=False, help="Path to save a rendered image frame")
     parser.add_argument("--frame", type=int, required=False, help="Frame to evaluate and render")
+    parser.add_argument("--render-frames", nargs=2, type=int, required=False, metavar=("START", "END"),
+                        help="Render a sequence of frames [start, end] into --render-dir")
+    parser.add_argument("--render-dir", required=False, help="Directory for rendered frame sequence")
     parser.add_argument("--engine", required=False, default="workbench",
                         help="workbench (default), eevee, cycles_fast, cycles_prod")
 
@@ -590,6 +640,12 @@ def main():
                         result["error"] = {"type": info["error"]["type"],
                                            "message": info["error"]["message"],
                                            "traceback": info["error"].get("traceback", ""), "line": 0}
+
+            if getattr(args, "render_frames", None) and getattr(args, "render_dir", None):
+                engine = (args.engine or "workbench").lower()
+                start_f, end_f = args.render_frames
+                seq_info = render_sequence_preview(scene, args.render_dir, start_f, end_f, engine)
+                result["sequence_render"] = seq_info
 
     except Exception as e:
         result["stage"] = "harness_error"

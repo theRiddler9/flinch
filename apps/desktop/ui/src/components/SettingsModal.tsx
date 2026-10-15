@@ -1,9 +1,52 @@
 import { useEffect, useState } from 'react';
 import { z } from 'zod';
 import { invoke } from '@tauri-apps/api/core';
-import { Gear as Settings2, FloppyDisk as Save, X, WarningCircle as AlertCircle, Monitor, Cube as Box, PaintBrush as Paintbrush, CheckCircle as CheckCircle2 } from '@phosphor-icons/react';
+import { Gear as Settings2, FloppyDisk as Save, X, WarningCircle as AlertCircle, Monitor, Cube as Box, PaintBrush as Paintbrush, CheckCircle as CheckCircle2, Eye, EyeSlash, Lightning } from '@phosphor-icons/react';
 import { cn } from '../lib/utils';
 import { useStore } from '../state/useStore';
+
+export const PROVIDER_PRESETS = [
+  {
+    id: 'nvidia',
+    name: 'NVIDIA NIM',
+    base_url: 'https://integrate.api.nvidia.com/v1',
+    model: 'meta/llama-3.3-70b-instruct',
+    badge: 'Llama 3.3 / Mistral',
+    keyPlaceholder: 'nvapi-...',
+  },
+  {
+    id: 'groq',
+    name: 'Groq',
+    base_url: 'https://api.groq.com/openai/v1',
+    model: 'llama-3.3-70b-versatile',
+    badge: 'Ultra Fast',
+    keyPlaceholder: 'gsk_...',
+  },
+  {
+    id: 'openrouter',
+    name: 'OpenRouter',
+    base_url: 'https://openrouter.ai/api/v1',
+    model: 'anthropic/claude-3.5-sonnet',
+    badge: 'Multi-Model',
+    keyPlaceholder: 'sk-or-...',
+  },
+  {
+    id: 'openai',
+    name: 'OpenAI',
+    base_url: 'https://api.openai.com/v1',
+    model: 'gpt-4o',
+    badge: 'Official API',
+    keyPlaceholder: 'sk-...',
+  },
+  {
+    id: 'ollama',
+    name: 'Ollama',
+    base_url: 'http://localhost:11434/v1',
+    model: 'qwen2.5-coder:7b',
+    badge: 'Local (Zero Cost)',
+    keyPlaceholder: 'Leave empty for local Ollama',
+  },
+] as const;
 
 export const SettingsSchema = z.object({
   blender_bin: z.string().min(1, 'Blender path is required'),
@@ -33,6 +76,7 @@ export function SettingsModal({
   const { theme, setTheme, fontSize, setFontSize, enginePreset } = useStore();
   
   const [activeTab, setActiveTab] = useState<Tab>('general');
+  const [showApiKey, setShowApiKey] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<keyof Settings, string>>>({});
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -210,20 +254,60 @@ export function SettingsModal({
             {activeTab === 'model' && (
               <div className="space-y-5 flinch-fade-in">
                 <div>
-                  <h3 className="text-lg font-semibold text-flinch-text mb-1">AI Provider</h3>
-                  <p className="text-xs text-flinch-text-muted mb-4">Set up your local or remote LLM endpoint. Must be OpenAI API compatible.</p>
+                  <h3 className="text-lg font-semibold text-flinch-text mb-1">AI Provider & API</h3>
+                  <p className="text-xs text-flinch-text-muted mb-4">
+                    Connect any OpenAI-compatible LLM service (NVIDIA NIM, Groq, OpenRouter, OpenAI, Ollama, etc.).
+                  </p>
                   
                   <div className="space-y-4">
+                    {/* Quick Presets */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold uppercase tracking-wider text-flinch-text-dim flex items-center gap-1.5">
+                        <Lightning size={14} className="text-flinch-accent" />
+                        Quick Presets
+                      </label>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        {PROVIDER_PRESETS.map((p) => {
+                          const isSelected = settings.base_url.trim().toLowerCase() === p.base_url.toLowerCase();
+                          return (
+                            <button
+                              key={p.id}
+                              type="button"
+                              onClick={() => {
+                                setSettings({
+                                  ...settings,
+                                  base_url: p.base_url,
+                                  model: p.model,
+                                });
+                              }}
+                              className={cn(
+                                "flex flex-col items-start p-2.5 rounded-lg border text-left flinch-transition cursor-pointer",
+                                isSelected
+                                  ? "bg-flinch-surface border-flinch-accent text-flinch-text shadow-sm"
+                                  : "bg-flinch-deep/60 border-flinch-border/60 text-flinch-text-muted hover:border-flinch-border hover:text-flinch-text hover:bg-flinch-deep"
+                              )}
+                            >
+                              <div className="flex items-center justify-between w-full">
+                                <span className="text-xs font-semibold">{p.name}</span>
+                                {isSelected && <span className="w-2 h-2 rounded-full bg-flinch-accent" />}
+                              </div>
+                              <span className="text-[10px] text-flinch-text-muted mt-0.5">{p.badge}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
                     <div className="space-y-1.5">
                       <label className="text-sm font-medium text-flinch-text-dim">API Provider URL</label>
                       <input
                         type="text"
-                        className={cn("w-full bg-flinch-deep border rounded px-3 py-2.5 text-sm text-flinch-text outline-none flinch-transition", errors.base_url ? "border-flinch-error focus:border-flinch-error" : "border-flinch-border focus:border-flinch-text-muted")}
+                        className={cn("w-full bg-flinch-deep border rounded px-3 py-2.5 text-sm text-flinch-text outline-none flinch-transition font-mono", errors.base_url ? "border-flinch-error focus:border-flinch-error" : "border-flinch-border focus:border-flinch-text-muted")}
                         value={settings.base_url}
                         onChange={(e) => setSettings({ ...settings, base_url: e.target.value })}
-                        placeholder="http://localhost:11434/v1"
+                        placeholder="https://integrate.api.nvidia.com/v1"
                       />
-                      <p className="text-xs text-flinch-text-muted">Use standard OpenAI-compatible endpoints (Ollama, Groq, OpenRouter, Google AI Studio)</p>
+                      <p className="text-xs text-flinch-text-muted">Standard OpenAI-compatible endpoint URL</p>
                       {errors.base_url && <div className="text-xs text-flinch-error mt-1">{errors.base_url}</div>}
                     </div>
 
@@ -231,24 +315,36 @@ export function SettingsModal({
                       <label className="text-sm font-medium text-flinch-text-dim">Model Name</label>
                       <input
                         type="text"
-                        className={cn("w-full bg-flinch-deep border rounded px-3 py-2.5 text-sm text-flinch-text outline-none flinch-transition", errors.model ? "border-flinch-error focus:border-flinch-error" : "border-flinch-border focus:border-flinch-text-muted")}
+                        className={cn("w-full bg-flinch-deep border rounded px-3 py-2.5 text-sm text-flinch-text outline-none flinch-transition font-mono", errors.model ? "border-flinch-error focus:border-flinch-error" : "border-flinch-border focus:border-flinch-text-muted")}
                         value={settings.model}
                         onChange={(e) => setSettings({ ...settings, model: e.target.value })}
-                        placeholder="qwen3.5:9b"
+                        placeholder="meta/llama-3.3-70b-instruct"
                       />
                       {errors.model && <div className="text-xs text-flinch-error mt-1">{errors.model}</div>}
                     </div>
 
                     <div className="space-y-1.5">
-                      <label className="text-sm font-medium text-flinch-text-dim">API Key (Optional)</label>
+                      <div className="flex items-center justify-between">
+                        <label className="text-sm font-medium text-flinch-text-dim">API Key</label>
+                        <button
+                          type="button"
+                          onClick={() => setShowApiKey(!showApiKey)}
+                          className="text-xs text-flinch-text-muted hover:text-flinch-text flex items-center gap-1 flinch-transition cursor-pointer"
+                        >
+                          {showApiKey ? <EyeSlash size={14} /> : <Eye size={14} />}
+                          <span>{showApiKey ? 'Hide Key' : 'Show Key'}</span>
+                        </button>
+                      </div>
                       <input
-                        type="password"
-                        className={cn("w-full bg-flinch-deep border rounded px-3 py-2.5 text-sm text-flinch-text outline-none flinch-transition", errors.api_key ? "border-flinch-error focus:border-flinch-error" : "border-flinch-border focus:border-flinch-text-muted")}
+                        type={showApiKey ? 'text' : 'password'}
+                        className={cn("w-full bg-flinch-deep border rounded px-3 py-2.5 text-sm text-flinch-text outline-none flinch-transition font-mono", errors.api_key ? "border-flinch-error focus:border-flinch-error" : "border-flinch-border focus:border-flinch-text-muted")}
                         value={settings.api_key}
                         onChange={(e) => setSettings({ ...settings, api_key: e.target.value })}
-                        placeholder="Leave empty for local models like Ollama"
+                        placeholder="nvapi-... (NVIDIA NIM) or sk-... (OpenAI / OpenRouter / Groq)"
                       />
-                      <p className="text-xs text-flinch-text-muted">Stored securely in your OS keychain. Never written to disk.</p>
+                      <p className="text-xs text-flinch-text-muted">
+                        Supports keys from any company (NVIDIA NIM, Groq, OpenRouter, OpenAI, etc.). Leave empty for local Ollama.
+                      </p>
                       {errors.api_key && <div className="text-xs text-flinch-error mt-1">{errors.api_key}</div>}
                     </div>
                   </div>

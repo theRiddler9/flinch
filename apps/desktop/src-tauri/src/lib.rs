@@ -174,18 +174,25 @@ async fn render_frame(
     state: State<'_, Arc<AppState>>,
     script: String,
     frame: i32,
-    out_path: String,
+    _out_path: Option<String>,
     engine: String,
 ) -> Result<String, String> {
+    // UUID suffix ensures concurrent or rapid sequential renders NEVER clash or lock
+    // each other out of script, result, or image files on Windows.
+    let uid = uuid::Uuid::new_v4().simple().to_string();
     let tmp = std::env::temp_dir();
-    let script_path = tmp.join(format!("flinch_frame_{}.py", frame));
-    let result_path = tmp.join(format!("flinch_frame_{}_result.json", frame));
+    let script_path = tmp.join(format!("flinch_frame_{}_{}.py", frame, uid));
+    let result_path = tmp.join(format!("flinch_frame_{}_{}_result.json", frame, uid));
+    let out_file = tmp.join(format!("flinch_frame_{}_{}.png", frame, uid));
     std::fs::write(&script_path, &script).map_err(|e| e.to_string())?;
 
-    let runner = state.runner.read().await;
-    // Use the runner's blender bin directly for a frame render
-    let blender_bin = resolve_blender_binary(runner.blender_bin());
+    #[cfg(windows)]
+    let out_path_for_blender = out_file.to_string_lossy().replace('\\', "/");
+    #[cfg(not(windows))]
+    let out_path_for_blender = out_file.to_string_lossy().to_string();
 
+    let runner = state.runner.read().await;
+    let blender_bin = resolve_blender_binary(runner.blender_bin());
     let harness_path = resolve_workspace_path("blender/harness.py");
 
     let mut cmd = tokio::process::Command::new(&blender_bin);
@@ -201,7 +208,7 @@ async fn render_frame(
         .arg("--out")
         .arg(&result_path)
         .arg("--render-image")
-        .arg(&out_path)
+        .arg(&out_path_for_blender)
         .arg("--frame")
         .arg(frame.to_string())
         .arg("--engine")
@@ -219,30 +226,156 @@ async fn render_frame(
     if !output.status.success() {
         let _ = std::fs::remove_file(&script_path);
         let _ = std::fs::remove_file(&result_path);
+        let _ = std::fs::remove_file(&out_file);
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("Blender frame render failed: {}", stderr));
+        let result_json = std::fs::read_to_string(&result_path).unwrap_or_else(|_| String::new());
+        return Err(format!(
+            "Blender frame render failed (exit {:?}).\nStderr: {}\nResult: {}",
+            output.status.code(),
+            stderr
+                .lines()
+                .filter(|l| !l.trim().is_empty())
+                .collect::<Vec<_>>()
+                .join("\n"),
+            if result_json.is_empty() {
+                "No result.json written".to_string()
+            } else {
+                result_json
+            }
+        ));
     }
 
-    if !std::path::Path::new(&out_path).exists() {
+    if !out_file.exists() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let result_json =
             std::fs::read_to_string(&result_path).unwrap_or_else(|_| "No result.json".to_string());
+        let render_err = serde_json::from_str::<serde_json::Value>(&result_json)
+            .ok()
+            .and_then(|v| {
+                v.get("render")
+                    .and_then(|r| r.get("error"))
+                    .and_then(|e| e.as_str().map(String::from))
+                    .or_else(|| {
+                        v.get("error")
+                            .and_then(|e| e.get("message"))
+                            .and_then(|m| m.as_str().map(String::from))
+                    })
+            })
+            .unwrap_or_else(|| {
+                "Blender exited successfully but did not write the image file.".to_string()
+            });
         let _ = std::fs::remove_file(&script_path);
         let _ = std::fs::remove_file(&result_path);
         return Err(format!(
-            "The image was not created. This usually means the script crashed during execution before it could reach the render phase.\nStderr: {}\nResult JSON: {}",
-            stderr, result_json
+            "Frame render produced no image.\n{}\nStderr tail: {}",
+            render_err,
+            stderr
+                .lines()
+                .rev()
+                .take(10)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .collect::<Vec<_>>()
+                .join("\n"),
         ));
     }
 
     use base64::{engine::general_purpose, Engine as _};
-    let img_bytes = std::fs::read(&out_path).map_err(|e| e.to_string())?;
+    let img_bytes = std::fs::read(&out_file).map_err(|e| e.to_string())?;
     let b64 = general_purpose::STANDARD.encode(&img_bytes);
-    let _ = std::fs::remove_file(&out_path); // clean up
+    let _ = std::fs::remove_file(&out_file);
     let _ = std::fs::remove_file(&script_path);
     let _ = std::fs::remove_file(&result_path);
 
     Ok(format!("data:image/png;base64,{}", b64))
+}
+
+#[tauri::command]
+async fn render_sequence(
+    state: State<'_, Arc<AppState>>,
+    script: String,
+    start_frame: i32,
+    end_frame: i32,
+    engine: String,
+) -> Result<std::collections::HashMap<i32, String>, String> {
+    let uid = uuid::Uuid::new_v4().simple().to_string();
+    let tmp = std::env::temp_dir();
+    let seq_dir = tmp.join(format!("flinch_seq_{}", uid));
+    let script_path = tmp.join(format!("flinch_seq_{}.py", uid));
+    let result_path = tmp.join(format!("flinch_seq_{}_result.json", uid));
+
+    std::fs::create_dir_all(&seq_dir).map_err(|e| e.to_string())?;
+    std::fs::write(&script_path, &script).map_err(|e| e.to_string())?;
+
+    let runner = state.runner.read().await;
+    let blender_bin = resolve_blender_binary(runner.blender_bin());
+    let harness_path = resolve_workspace_path("blender/harness.py");
+
+    #[cfg(windows)]
+    let seq_dir_str = seq_dir.to_string_lossy().replace('\\', "/");
+    #[cfg(not(windows))]
+    let seq_dir_str = seq_dir.to_string_lossy().to_string();
+
+    let mut cmd = tokio::process::Command::new(&blender_bin);
+    cmd.arg("-b")
+        .arg("--factory-startup")
+        .arg("--python-exit-code")
+        .arg("1")
+        .arg("--python")
+        .arg(&harness_path)
+        .arg("--")
+        .arg("--script")
+        .arg(&script_path)
+        .arg("--out")
+        .arg(&result_path)
+        .arg("--render-frames")
+        .arg(start_frame.to_string())
+        .arg(end_frame.to_string())
+        .arg("--render-dir")
+        .arg(&seq_dir_str)
+        .arg("--engine")
+        .arg(&engine);
+
+    #[cfg(windows)]
+    {
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+
+    let output = cmd
+        .output()
+        .await
+        .map_err(|e| format!("Failed to spawn blender: {}", e))?;
+
+    let _ = std::fs::remove_file(&script_path);
+    let _ = std::fs::remove_file(&result_path);
+
+    if !output.status.success() {
+        let _ = std::fs::remove_dir_all(&seq_dir);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Blender sequence render failed: {}", stderr));
+    }
+
+    use base64::{engine::general_purpose, Engine as _};
+    let mut frames = std::collections::HashMap::new();
+
+    for f in start_frame..=end_frame {
+        let frame_file = seq_dir.join(format!("frame_{}.png", f));
+        if frame_file.exists() {
+            if let Ok(bytes) = std::fs::read(&frame_file) {
+                let b64 = general_purpose::STANDARD.encode(&bytes);
+                frames.insert(f, format!("data:image/png;base64,{}", b64));
+            }
+        }
+    }
+
+    let _ = std::fs::remove_dir_all(&seq_dir);
+
+    if frames.is_empty() {
+        return Err("No frames were generated in the sequence render.".to_string());
+    }
+
+    Ok(frames)
 }
 
 #[tauri::command]
@@ -284,19 +417,32 @@ async fn get_settings() -> Result<AppSettings, String> {
     let config_str = fs::read_to_string(&config_path).unwrap_or_default();
     let app_config: Option<flinch_core::config::AppConfig> = toml::from_str(&config_str).ok();
 
-    let (base_url, model, blender_bin) = match app_config {
-        Some(cfg) => (cfg.provider.base_url, cfg.provider.model, cfg.blender.bin),
+    let (base_url, model, blender_bin, resolved_key) = match app_config {
+        Some(cfg) => {
+            let key = cfg.provider.resolve_api_key();
+            (
+                cfg.provider.base_url,
+                cfg.provider.model,
+                cfg.blender.bin,
+                key,
+            )
+        }
         None => (
             "http://localhost:11434/v1".to_string(),
             "qwen3.5:9b".to_string(),
             "blender".to_string(),
+            "".to_string(),
         ),
     };
 
-    let api_key = match keyring::Entry::new("flinch", "api_key") {
+    let mut api_key = match keyring::Entry::new("flinch", "api_key") {
         Ok(entry) => entry.get_password().unwrap_or_default(),
         Err(_) => "".to_string(),
     };
+
+    if api_key.trim().is_empty() && !resolved_key.trim().is_empty() {
+        api_key = resolved_key;
+    }
 
     let resolved_blender_bin = resolve_blender_binary(&blender_bin);
 
@@ -320,6 +466,20 @@ async fn save_settings(
         let _ = entry.set_password(&settings.api_key);
     }
 
+    let config_path = resolve_workspace_path("flinch.toml");
+    let config_str = fs::read_to_string(&config_path).unwrap_or_default();
+    let existing_config: Option<flinch_core::config::AppConfig> = toml::from_str(&config_str).ok();
+
+    let api_key_env = existing_config
+        .as_ref()
+        .map(|c| c.provider.api_key_env.clone())
+        .unwrap_or_default();
+
+    let max_concurrency = existing_config
+        .as_ref()
+        .map(|c| c.provider.max_concurrency)
+        .unwrap_or(1);
+
     // Save to flinch.toml
     let config = flinch_core::config::AppConfig {
         blender: flinch_core::config::BlenderConfig {
@@ -329,17 +489,25 @@ async fn save_settings(
             kind: "openai_compatible".to_string(),
             base_url: settings.base_url.clone(),
             model: settings.model.clone(),
-            api_key_env: "".to_string(),
-            max_concurrency: 1,
+            api_key: if settings.api_key.trim().is_empty() {
+                None
+            } else {
+                Some(settings.api_key.trim().to_string())
+            },
+            api_key_env,
+            max_concurrency,
         },
     };
 
-    let toml_str = toml::to_string(&config).map_err(|e| e.to_string())?;
-    let config_path = resolve_workspace_path("flinch.toml");
+    let toml_str = toml::to_string_pretty(&config).map_err(|e| e.to_string())?;
     fs::write(&config_path, toml_str).map_err(|e| e.to_string())?;
 
     // Update agent and runner
-    let provider = OpenAiCompatProvider::new(settings.base_url, settings.model, settings.api_key);
+    let provider = OpenAiCompatProvider::new(
+        settings.base_url,
+        settings.model,
+        settings.api_key.trim().to_string(),
+    );
     let runner_new = Runner::new(RunnerConfig {
         blender_bin: resolved_bin.clone(),
         timeout_sec: 60,
@@ -590,8 +758,9 @@ async fn check_doctor() -> Result<DoctorResult, String> {
     let url = format!("{}/models", settings.base_url.trim_end_matches('/'));
 
     let req = client.get(&url);
-    let req = if !settings.api_key.is_empty() {
-        req.header("Authorization", format!("Bearer {}", settings.api_key))
+    let trimmed_key = settings.api_key.trim();
+    let req = if !trimmed_key.is_empty() {
+        req.header("Authorization", format!("Bearer {}", trimmed_key))
     } else {
         req
     };
@@ -665,32 +834,33 @@ pub fn run() {
             let app_config: Option<flinch_core::config::AppConfig> =
                 toml::from_str(&config_str).ok();
 
-            let (base_url, model, api_key_env, blender_bin) = match app_config {
-                Some(cfg) => (
-                    cfg.provider.base_url,
-                    cfg.provider.model,
-                    cfg.provider.api_key_env,
-                    cfg.blender.bin,
-                ),
+            let (base_url, model, resolved_config_key, blender_bin) = match app_config {
+                Some(cfg) => {
+                    let k = cfg.provider.resolve_api_key();
+                    (
+                        cfg.provider.base_url,
+                        cfg.provider.model,
+                        k,
+                        cfg.blender.bin,
+                    )
+                }
                 None => (
                     "http://localhost:11434/v1".to_string(),
                     "qwen3.5:9b".to_string(),
-                    "OPENAI_API_KEY".to_string(),
+                    std::env::var("NVIDIA_API_KEY")
+                        .or_else(|_| std::env::var("OPENAI_API_KEY"))
+                        .unwrap_or_default(),
                     "blender".to_string(),
                 ),
             };
 
-            let mut api_key = if !api_key_env.is_empty() {
-                std::env::var(&api_key_env).unwrap_or_default()
-            } else {
-                std::env::var("OPENAI_API_KEY").unwrap_or_default()
-            };
+            let mut api_key = resolved_config_key;
 
             // Override with keyring if available
             if let Ok(entry) = keyring::Entry::new("flinch", "api_key") {
                 if let Ok(pw) = entry.get_password() {
-                    if !pw.is_empty() {
-                        api_key = pw;
+                    if !pw.trim().is_empty() {
+                        api_key = pw.trim().to_string();
                     }
                 }
             }
@@ -757,6 +927,7 @@ pub fn run() {
             export_preview,
             open_in_blender,
             render_frame,
+            render_sequence,
             get_system_metrics,
             get_settings,
             save_settings,

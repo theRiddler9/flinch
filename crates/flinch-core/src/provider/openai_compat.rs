@@ -70,11 +70,12 @@ impl LlmProvider for OpenAiCompatProvider {
         let max_retries = 5;
 
         loop {
-            let req_builder = self
-                .client
-                .post(&url)
-                .bearer_auth(&self.api_key)
-                .json(&request_body);
+            let mut req_builder = self.client.post(&url).json(&request_body);
+
+            let trimmed_key = self.api_key.trim();
+            if !trimmed_key.is_empty() {
+                req_builder = req_builder.bearer_auth(trimmed_key);
+            }
 
             let response = req_builder.send().await;
 

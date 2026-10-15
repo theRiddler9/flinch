@@ -3,7 +3,8 @@ bin = "/path/to/blender"
 
 [provider]
 kind = "openai_compatible"
-base_url = "http://localhost:11434/v1"
-model = "llama3"
-api_key_env = ""
+base_url = "https://integrate.api.nvidia.com/v1"
+model = "meta/llama-3.3-70b-instruct"
+api_key = "" # Paste your API key here (e.g. nvapi-... for NVIDIA NIM or sk-... for OpenAI/OpenRouter)
+api_key_env = "NVIDIA_API_KEY" # Or specify an environment variable name holding your key
 max_concurrency = 1

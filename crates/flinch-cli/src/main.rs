@@ -53,8 +53,49 @@ async fn main() -> anyhow::Result<()> {
     match cli.command {
         Commands::Doctor => {
             println!("Doctor: checking dependencies...");
-            // TODO: check blender bin, check provider reachable
-            println!("Doctor check completed (stub).");
+            let config_str = fs::read_to_string("flinch.toml").unwrap_or_default();
+            let app_config: Option<flinch_core::config::AppConfig> =
+                toml::from_str(&config_str).ok();
+
+            if let Some(cfg) = app_config {
+                println!("- Blender configured bin: {}", cfg.blender.bin);
+                let api_key = cfg.provider.resolve_api_key();
+                let key_status = if api_key.is_empty() {
+                    "None (local or unauthenticated)"
+                } else {
+                    "Present (configured)"
+                };
+                println!(
+                    "- Provider: {} ({})",
+                    cfg.provider.base_url, cfg.provider.model
+                );
+                println!("- API Key status: {}", key_status);
+
+                let client = reqwest::Client::new();
+                let url = format!("{}/models", cfg.provider.base_url.trim_end_matches('/'));
+                let mut req = client.get(&url);
+                if !api_key.is_empty() {
+                    req = req.header("Authorization", format!("Bearer {}", api_key));
+                }
+                match req.send().await {
+                    Ok(resp) => {
+                        if resp.status().is_success() {
+                            println!(
+                                "  [OK] Provider reachable and authenticated (HTTP {}).",
+                                resp.status()
+                            );
+                        } else {
+                            println!("  [WARN] Provider returned status: HTTP {}", resp.status());
+                        }
+                    }
+                    Err(e) => {
+                        println!("  [WARN] Provider connection error: {}", e);
+                    }
+                }
+            } else {
+                println!("- Warning: flinch.toml not found or invalid.");
+            }
+            println!("Doctor check completed.");
         }
         Commands::Harness { script } => {
             let config_str = fs::read_to_string("flinch.toml").unwrap_or_default();
@@ -77,7 +118,7 @@ async fn main() -> anyhow::Result<()> {
             println!("Harness result: {:#?}", res);
         }
         Commands::Run { prompt } => {
-            let agent = setup_agent()?;
+            let agent = setup_agent(None, None)?;
             let res = agent
                 .run_task(
                     &prompt,
@@ -98,9 +139,10 @@ async fn main() -> anyhow::Result<()> {
             tier,
             id,
             model,
-            provider: _provider,
+            provider,
         } => {
-            let agent = setup_agent()?;
+            let model_name = model.clone().unwrap_or_else(|| "llama3".to_string());
+            let agent = setup_agent(model, provider)?;
             let prompts_data = fs::read_to_string("evals/prompts.json")?;
             let mut eval_prompts: Vec<EvalPrompt> = serde_json::from_str(&prompts_data)?;
 
@@ -188,7 +230,6 @@ async fn main() -> anyhow::Result<()> {
             md.push_str("| Model | Tier | n | executes@1 | pass@1 | pass@3 (feedback) |\n");
             md.push_str("|-------|------|---|------------|--------|-------------------|\n");
 
-            let model_name = model.unwrap_or_else(|| "llama3".to_string());
             let tier_name = tier.unwrap_or_else(|| "all".to_string());
 
             md.push_str(&format!(
@@ -203,33 +244,45 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn setup_agent() -> anyhow::Result<Agent> {
+fn setup_agent(
+    model_override: Option<String>,
+    provider_override: Option<String>,
+) -> anyhow::Result<Agent> {
     let system_prompt = fs::read_to_string("prompts/system.md").unwrap_or_default();
     let feedback_prompt = fs::read_to_string("prompts/feedback.md").unwrap_or_default();
 
     let config_str = fs::read_to_string("flinch.toml").unwrap_or_default();
     let app_config: Option<flinch_core::config::AppConfig> = toml::from_str(&config_str).ok();
 
-    let (base_url, model, api_key_env, blender_bin) = match app_config {
-        Some(cfg) => (
-            cfg.provider.base_url,
-            cfg.provider.model,
-            cfg.provider.api_key_env,
-            cfg.blender.bin,
-        ),
-        None => (
-            "http://localhost:11434/v1".to_string(),
-            "llama3".to_string(),
-            "OPENAI_API_KEY".to_string(),
-            "blender".to_string(),
-        ),
+    let (mut base_url, mut model, api_key, blender_bin) = match app_config {
+        Some(cfg) => {
+            let key = cfg.provider.resolve_api_key();
+            (
+                cfg.provider.base_url,
+                cfg.provider.model,
+                key,
+                cfg.blender.bin,
+            )
+        }
+        None => {
+            let key = std::env::var("NVIDIA_API_KEY")
+                .or_else(|_| std::env::var("OPENAI_API_KEY"))
+                .unwrap_or_default();
+            (
+                "http://localhost:11434/v1".to_string(),
+                "llama3".to_string(),
+                key,
+                "blender".to_string(),
+            )
+        }
     };
 
-    let api_key = if !api_key_env.is_empty() {
-        std::env::var(&api_key_env).unwrap_or_default()
-    } else {
-        std::env::var("OPENAI_API_KEY").unwrap_or_default()
-    };
+    if let Some(m) = model_override {
+        model = m;
+    }
+    if let Some(p) = provider_override {
+        base_url = p;
+    }
 
     let provider = OpenAiCompatProvider::new(base_url, model, api_key);
 
