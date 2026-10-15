@@ -340,7 +340,7 @@ async fn save_settings(
     let api_key_env = existing_config
         .as_ref()
         .map(|c| c.provider.api_key_env.clone())
-        .unwrap_or_else(|| "".to_string());
+        .unwrap_or_default();
 
     let max_concurrency = existing_config
         .as_ref()
