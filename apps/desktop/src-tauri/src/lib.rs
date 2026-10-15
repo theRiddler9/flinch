@@ -284,19 +284,32 @@ async fn get_settings() -> Result<AppSettings, String> {
     let config_str = fs::read_to_string(&config_path).unwrap_or_default();
     let app_config: Option<flinch_core::config::AppConfig> = toml::from_str(&config_str).ok();
 
-    let (base_url, model, blender_bin) = match app_config {
-        Some(cfg) => (cfg.provider.base_url, cfg.provider.model, cfg.blender.bin),
+    let (base_url, model, blender_bin, resolved_key) = match app_config {
+        Some(cfg) => {
+            let key = cfg.provider.resolve_api_key();
+            (
+                cfg.provider.base_url,
+                cfg.provider.model,
+                cfg.blender.bin,
+                key,
+            )
+        }
         None => (
             "http://localhost:11434/v1".to_string(),
             "qwen3.5:9b".to_string(),
             "blender".to_string(),
+            "".to_string(),
         ),
     };
 
-    let api_key = match keyring::Entry::new("flinch", "api_key") {
+    let mut api_key = match keyring::Entry::new("flinch", "api_key") {
         Ok(entry) => entry.get_password().unwrap_or_default(),
         Err(_) => "".to_string(),
     };
+
+    if api_key.trim().is_empty() && !resolved_key.trim().is_empty() {
+        api_key = resolved_key;
+    }
 
     let resolved_blender_bin = resolve_blender_binary(&blender_bin);
 
@@ -320,6 +333,20 @@ async fn save_settings(
         let _ = entry.set_password(&settings.api_key);
     }
 
+    let config_path = resolve_workspace_path("flinch.toml");
+    let config_str = fs::read_to_string(&config_path).unwrap_or_default();
+    let existing_config: Option<flinch_core::config::AppConfig> = toml::from_str(&config_str).ok();
+
+    let api_key_env = existing_config
+        .as_ref()
+        .map(|c| c.provider.api_key_env.clone())
+        .unwrap_or_else(|| "".to_string());
+
+    let max_concurrency = existing_config
+        .as_ref()
+        .map(|c| c.provider.max_concurrency)
+        .unwrap_or(1);
+
     // Save to flinch.toml
     let config = flinch_core::config::AppConfig {
         blender: flinch_core::config::BlenderConfig {
@@ -329,17 +356,25 @@ async fn save_settings(
             kind: "openai_compatible".to_string(),
             base_url: settings.base_url.clone(),
             model: settings.model.clone(),
-            api_key_env: "".to_string(),
-            max_concurrency: 1,
+            api_key: if settings.api_key.trim().is_empty() {
+                None
+            } else {
+                Some(settings.api_key.trim().to_string())
+            },
+            api_key_env,
+            max_concurrency,
         },
     };
 
-    let toml_str = toml::to_string(&config).map_err(|e| e.to_string())?;
-    let config_path = resolve_workspace_path("flinch.toml");
+    let toml_str = toml::to_string_pretty(&config).map_err(|e| e.to_string())?;
     fs::write(&config_path, toml_str).map_err(|e| e.to_string())?;
 
     // Update agent and runner
-    let provider = OpenAiCompatProvider::new(settings.base_url, settings.model, settings.api_key);
+    let provider = OpenAiCompatProvider::new(
+        settings.base_url,
+        settings.model,
+        settings.api_key.trim().to_string(),
+    );
     let runner_new = Runner::new(RunnerConfig {
         blender_bin: resolved_bin.clone(),
         timeout_sec: 60,
@@ -590,8 +625,9 @@ async fn check_doctor() -> Result<DoctorResult, String> {
     let url = format!("{}/models", settings.base_url.trim_end_matches('/'));
 
     let req = client.get(&url);
-    let req = if !settings.api_key.is_empty() {
-        req.header("Authorization", format!("Bearer {}", settings.api_key))
+    let trimmed_key = settings.api_key.trim();
+    let req = if !trimmed_key.is_empty() {
+        req.header("Authorization", format!("Bearer {}", trimmed_key))
     } else {
         req
     };
@@ -665,32 +701,33 @@ pub fn run() {
             let app_config: Option<flinch_core::config::AppConfig> =
                 toml::from_str(&config_str).ok();
 
-            let (base_url, model, api_key_env, blender_bin) = match app_config {
-                Some(cfg) => (
-                    cfg.provider.base_url,
-                    cfg.provider.model,
-                    cfg.provider.api_key_env,
-                    cfg.blender.bin,
-                ),
+            let (base_url, model, resolved_config_key, blender_bin) = match app_config {
+                Some(cfg) => {
+                    let k = cfg.provider.resolve_api_key();
+                    (
+                        cfg.provider.base_url,
+                        cfg.provider.model,
+                        k,
+                        cfg.blender.bin,
+                    )
+                }
                 None => (
                     "http://localhost:11434/v1".to_string(),
                     "qwen3.5:9b".to_string(),
-                    "OPENAI_API_KEY".to_string(),
+                    std::env::var("NVIDIA_API_KEY")
+                        .or_else(|_| std::env::var("OPENAI_API_KEY"))
+                        .unwrap_or_default(),
                     "blender".to_string(),
                 ),
             };
 
-            let mut api_key = if !api_key_env.is_empty() {
-                std::env::var(&api_key_env).unwrap_or_default()
-            } else {
-                std::env::var("OPENAI_API_KEY").unwrap_or_default()
-            };
+            let mut api_key = resolved_config_key;
 
             // Override with keyring if available
             if let Ok(entry) = keyring::Entry::new("flinch", "api_key") {
                 if let Ok(pw) = entry.get_password() {
-                    if !pw.is_empty() {
-                        api_key = pw;
+                    if !pw.trim().is_empty() {
+                        api_key = pw.trim().to_string();
                     }
                 }
             }
