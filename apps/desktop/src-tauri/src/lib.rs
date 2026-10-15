@@ -174,31 +174,25 @@ async fn render_frame(
     state: State<'_, Arc<AppState>>,
     script: String,
     frame: i32,
-    out_path: String,
+    _out_path: Option<String>,
     engine: String,
 ) -> Result<String, String> {
-    // UUID suffix prevents concurrent renders of different frames from clobbering each other's
-    // script / result files (they all used to share the same name e.g. flinch_frame_5.py).
+    // UUID suffix ensures concurrent or rapid sequential renders NEVER clash or lock
+    // each other out of script, result, or image files on Windows.
     let uid = uuid::Uuid::new_v4().simple().to_string();
     let tmp = std::env::temp_dir();
     let script_path = tmp.join(format!("flinch_frame_{}_{}.py", frame, uid));
     let result_path = tmp.join(format!("flinch_frame_{}_{}_result.json", frame, uid));
+    let out_file = tmp.join(format!("flinch_frame_{}_{}.png", frame, uid));
     std::fs::write(&script_path, &script).map_err(|e| e.to_string())?;
 
-    // On Windows the frontend sends a backslash path (C:\Users\...\flinch_frame_5.png).
-    // Blender's Python receives this as the --render-image arg and sets r.filepath to it.
-    // With use_file_extension=False, Blender silently fails to write when the path has
-    // backslashes — it interprets the path as a prefix rather than a full path.
-    // Normalise to forward slashes so Blender sees a valid path on all platforms.
     #[cfg(windows)]
-    let out_path_for_blender = out_path.replace('\\', "/");
+    let out_path_for_blender = out_file.to_string_lossy().replace('\\', "/");
     #[cfg(not(windows))]
-    let out_path_for_blender = out_path.clone();
+    let out_path_for_blender = out_file.to_string_lossy().to_string();
 
     let runner = state.runner.read().await;
-    // Use the runner's blender bin directly for a frame render
     let blender_bin = resolve_blender_binary(runner.blender_bin());
-
     let harness_path = resolve_workspace_path("blender/harness.py");
 
     let mut cmd = tokio::process::Command::new(&blender_bin);
@@ -232,8 +226,8 @@ async fn render_frame(
     if !output.status.success() {
         let _ = std::fs::remove_file(&script_path);
         let _ = std::fs::remove_file(&result_path);
+        let _ = std::fs::remove_file(&out_file);
         let stderr = String::from_utf8_lossy(&output.stderr);
-        // Try to surface the harness result JSON for a more actionable error message.
         let result_json = std::fs::read_to_string(&result_path).unwrap_or_else(|_| String::new());
         return Err(format!(
             "Blender frame render failed (exit {:?}).\nStderr: {}\nResult: {}",
@@ -251,14 +245,10 @@ async fn render_frame(
         ));
     }
 
-    // The harness catches render failures internally and returns ok=true/exit=0.
-    // Check whether the image was actually written.
-    if !std::path::Path::new(&out_path).exists() {
+    if !out_file.exists() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        // Parse result JSON to get the render-specific error, if any.
         let result_json =
             std::fs::read_to_string(&result_path).unwrap_or_else(|_| "No result.json".to_string());
-        // Try to extract a render error message from the JSON for a user-friendly message.
         let render_err = serde_json::from_str::<serde_json::Value>(&result_json)
             .ok()
             .and_then(|v| {
@@ -292,13 +282,100 @@ async fn render_frame(
     }
 
     use base64::{engine::general_purpose, Engine as _};
-    let img_bytes = std::fs::read(&out_path).map_err(|e| e.to_string())?;
+    let img_bytes = std::fs::read(&out_file).map_err(|e| e.to_string())?;
     let b64 = general_purpose::STANDARD.encode(&img_bytes);
-    let _ = std::fs::remove_file(&out_path); // clean up
+    let _ = std::fs::remove_file(&out_file);
     let _ = std::fs::remove_file(&script_path);
     let _ = std::fs::remove_file(&result_path);
 
     Ok(format!("data:image/png;base64,{}", b64))
+}
+
+#[tauri::command]
+async fn render_sequence(
+    state: State<'_, Arc<AppState>>,
+    script: String,
+    start_frame: i32,
+    end_frame: i32,
+    engine: String,
+) -> Result<std::collections::HashMap<i32, String>, String> {
+    let uid = uuid::Uuid::new_v4().simple().to_string();
+    let tmp = std::env::temp_dir();
+    let seq_dir = tmp.join(format!("flinch_seq_{}", uid));
+    let script_path = tmp.join(format!("flinch_seq_{}.py", uid));
+    let result_path = tmp.join(format!("flinch_seq_{}_result.json", uid));
+
+    std::fs::create_dir_all(&seq_dir).map_err(|e| e.to_string())?;
+    std::fs::write(&script_path, &script).map_err(|e| e.to_string())?;
+
+    let runner = state.runner.read().await;
+    let blender_bin = resolve_blender_binary(runner.blender_bin());
+    let harness_path = resolve_workspace_path("blender/harness.py");
+
+    #[cfg(windows)]
+    let seq_dir_str = seq_dir.to_string_lossy().replace('\\', "/");
+    #[cfg(not(windows))]
+    let seq_dir_str = seq_dir.to_string_lossy().to_string();
+
+    let mut cmd = tokio::process::Command::new(&blender_bin);
+    cmd.arg("-b")
+        .arg("--factory-startup")
+        .arg("--python-exit-code")
+        .arg("1")
+        .arg("--python")
+        .arg(&harness_path)
+        .arg("--")
+        .arg("--script")
+        .arg(&script_path)
+        .arg("--out")
+        .arg(&result_path)
+        .arg("--render-frames")
+        .arg(start_frame.to_string())
+        .arg(end_frame.to_string())
+        .arg("--render-dir")
+        .arg(&seq_dir_str)
+        .arg("--engine")
+        .arg(&engine);
+
+    #[cfg(windows)]
+    {
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+
+    let output = cmd
+        .output()
+        .await
+        .map_err(|e| format!("Failed to spawn blender: {}", e))?;
+
+    let _ = std::fs::remove_file(&script_path);
+    let _ = std::fs::remove_file(&result_path);
+
+    if !output.status.success() {
+        let _ = std::fs::remove_dir_all(&seq_dir);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Blender sequence render failed: {}", stderr));
+    }
+
+    use base64::{engine::general_purpose, Engine as _};
+    let mut frames = std::collections::HashMap::new();
+
+    for f in start_frame..=end_frame {
+        let frame_file = seq_dir.join(format!("frame_{}.png", f));
+        if frame_file.exists() {
+            if let Ok(bytes) = std::fs::read(&frame_file) {
+                let b64 = general_purpose::STANDARD.encode(&bytes);
+                frames.insert(f, format!("data:image/png;base64,{}", b64));
+            }
+        }
+    }
+
+    let _ = std::fs::remove_dir_all(&seq_dir);
+
+    if frames.is_empty() {
+        return Err("No frames were generated in the sequence render.".to_string());
+    }
+
+    Ok(frames)
 }
 
 #[tauri::command]
@@ -850,6 +927,7 @@ pub fn run() {
             export_preview,
             open_in_blender,
             render_frame,
+            render_sequence,
             get_system_metrics,
             get_settings,
             save_settings,

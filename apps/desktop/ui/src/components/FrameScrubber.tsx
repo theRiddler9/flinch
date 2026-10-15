@@ -16,94 +16,174 @@ interface FrameScrubberProps {
 export function FrameScrubber({ script, frameRange }: FrameScrubberProps) {
   const isRunning = useStore((state) => state.isRunning);
   const finalResult = useStore((state) => state.finalResult);
-  const [frame, setFrame]       = useState(frameRange[0]);
-  const [playing, setPlaying]   = useState(false);
-  const [loading, setLoading]   = useState(false);
+  const startFrame = frameRange[0];
+  const endFrame = frameRange[1];
+  const totalFrames = Math.max(1, endFrame - startFrame + 1);
+
+  const [frame, setFrame] = useState(startFrame);
+  const [playing, setPlaying] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [baking, setBaking] = useState(false);
+  const [bakingText, setBakingText] = useState('');
   const [previewSrc, setPreviewSrc] = useState<string | null>(null);
-  const [error, setError]       = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [cachedFramesCount, setCachedFramesCount] = useState(0);
+
+  // In-memory frame cache: frame number -> base64 data URI
+  const frameCacheRef = useRef<Map<number, string>>(new Map());
+  const isRenderingRef = useRef(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isFailedRun = finalResult && finalResult.success === false;
   const canRender = Boolean(script && script.includes('import bpy') && !isRunning && !isFailedRun);
 
-  const renderFrame = useCallback(async (f: number, silent = false): Promise<boolean> => {
-    if (!script || !script.includes('import bpy')) {
-      return false;
-    }
-    if (!silent) setLoading(true);
+  // Single-frame renderer with cache check
+  const renderFrame = useCallback(
+    async (f: number, silent = false): Promise<boolean> => {
+      if (!script || !script.includes('import bpy')) return false;
+
+      // Check cache first - instant preview
+      const cached = frameCacheRef.current.get(f);
+      if (cached) {
+        setPreviewSrc(cached);
+        return true;
+      }
+
+      if (isRenderingRef.current) return false;
+      isRenderingRef.current = true;
+
+      if (!silent) setLoading(true);
+      setError(null);
+
+      try {
+        const engine = useStore.getState().enginePreset;
+        const b64DataUri = await invoke<string>('render_frame', {
+          script,
+          frame: f,
+          outPath: null,
+          engine,
+        });
+        frameCacheRef.current.set(f, b64DataUri);
+        setCachedFramesCount(frameCacheRef.current.size);
+        setPreviewSrc(b64DataUri);
+        return true;
+      } catch (e: any) {
+        setError(String(e));
+        return false;
+      } finally {
+        isRenderingRef.current = false;
+        if (!silent) setLoading(false);
+      }
+    },
+    [script]
+  );
+
+  // Batch-bake all frames in one single Blender invocation (~30ms/frame)
+  const bakeAnimation = useCallback(async (): Promise<boolean> => {
+    if (!script || !script.includes('import bpy')) return false;
+    setBaking(true);
+    setBakingText(`Baking frames ${startFrame} to ${endFrame} for smooth playback...`);
     setError(null);
+
     try {
-      const tDir = await tempDir();
-      const outPath = await join(tDir, `flinch_frame_${f}.png`);
       const engine = useStore.getState().enginePreset;
-      const b64DataUri = await invoke<string>('render_frame', { script, frame: f, outPath, engine });
-      setPreviewSrc(b64DataUri);
+      const frames = await invoke<Record<string, string>>('render_sequence', {
+        script,
+        startFrame,
+        endFrame,
+        engine,
+      });
+
+      for (const [fStr, dataUri] of Object.entries(frames)) {
+        frameCacheRef.current.set(Number(fStr), dataUri);
+      }
+      setCachedFramesCount(frameCacheRef.current.size);
+
+      // Update current preview if we have it
+      const current = frameCacheRef.current.get(frame) || frameCacheRef.current.get(startFrame);
+      if (current) setPreviewSrc(current);
       return true;
     } catch (e: any) {
       setError(String(e));
       return false;
     } finally {
-      if (!silent) setLoading(false);
+      setBaking(false);
+      setBakingText('');
     }
-  }, [script]);
+  }, [script, startFrame, endFrame, frame]);
 
-  // Debounced render on frame change if canRender
+  // Handle Play/Pause toggle
+  const togglePlay = useCallback(async () => {
+    if (playing) {
+      setPlaying(false);
+      return;
+    }
+
+    // Check if we have cached frames
+    const cachedCount = frameCacheRef.current.size;
+    const isFullyCached = cachedCount >= totalFrames;
+
+    if (!isFullyCached) {
+      // Bake all frames quickly in one single process so animation plays in one smooth flow
+      const success = await bakeAnimation();
+      if (!success) return;
+    }
+
+    setPlaying(true);
+  }, [playing, totalFrames, bakeAnimation]);
+
+  // Smooth 24fps in-memory playback loop (0ms latency, zero Blender calls during play)
+  useEffect(() => {
+    if (!playing) return;
+
+    const interval = setInterval(() => {
+      setFrame((prevFrame) => {
+        const next = prevFrame >= endFrame ? startFrame : prevFrame + 1;
+        const cachedUri = frameCacheRef.current.get(next);
+        if (cachedUri) {
+          setPreviewSrc(cachedUri);
+        }
+        return next;
+      });
+    }, 1000 / 24);
+
+    return () => clearInterval(interval);
+  }, [playing, startFrame, endFrame]);
+
+  // Debounced render on manual scrub if not in cache
   useEffect(() => {
     if (!canRender || playing) return;
+
+    // If frame is already cached, show it instantly
+    const cached = frameCacheRef.current.get(frame);
+    if (cached) {
+      setPreviewSrc(cached);
+      return;
+    }
+
+    // Otherwise debounce single frame render
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       renderFrame(frame);
-    }, 350);
-    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+    }, 250);
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
   }, [frame, renderFrame, canRender, playing]);
 
-  // Reset preview when script changes
+  // Reset cache and preview when script changes
   useEffect(() => {
+    frameCacheRef.current.clear();
+    setCachedFramesCount(0);
     setPreviewSrc(null);
     setError(null);
+    setPlaying(false);
+    setFrame(startFrame);
     if (canRender) {
-      renderFrame(frameRange[0]);
+      renderFrame(startFrame);
     }
-  }, [script, canRender]);
-
-  // Playback
-  useEffect(() => {
-    let active = true;
-    if (playing) {
-      const loop = async () => {
-        let currentFrame = frame;
-        while (active) {
-          const start = Date.now();
-          const renderSuccess = await renderFrame(currentFrame, true);
-          if (!active) break;
-          
-          if (!renderSuccess) {
-            setPlaying(false);
-            break;
-          }
-
-          const elapsed = Date.now() - start;
-          const delay = Math.max(0, (1000 / 24) - elapsed);
-          if (delay > 0) {
-            await new Promise((r) => setTimeout(r, delay));
-          }
-          if (!active) break;
-
-          currentFrame++;
-          if (currentFrame > frameRange[1]) {
-            setPlaying(false);
-            setFrame(frameRange[0]);
-            break;
-          }
-          setFrame(currentFrame);
-        }
-      };
-      loop();
-    }
-    return () => { active = false; };
-  }, [playing, frameRange, renderFrame]);
-
-  const totalFrames = frameRange[1] - frameRange[0];
+  }, [script, canRender, startFrame, renderFrame]);
 
   return (
     <div className="flex flex-col bg-flinch-deep border-t border-flinch-border-dim h-full">
@@ -117,31 +197,51 @@ export function FrameScrubber({ script, frameRange }: FrameScrubberProps) {
         </div>
         <div className="flex items-center gap-2">
           {canRender && (
-            <button
-              onClick={() => renderFrame(frame)}
-              disabled={loading}
-              className="text-flinch-text-muted hover:text-flinch-text flinch-transition flex items-center gap-1"
-            >
-              <RefreshCw size={10} className={loading ? 'animate-spin' : ''} />
-              <span>Rerender Frame</span>
-            </button>
+            <>
+              <button
+                onClick={bakeAnimation}
+                disabled={loading || baking}
+                className="text-flinch-text-muted hover:text-flinch-text flinch-transition flex items-center gap-1 bg-flinch-surface/60 px-2 py-0.5 rounded border border-flinch-border/50 text-2xs"
+                title="Bake all frames in sequence for instant smooth 24fps playback"
+              >
+                <Sparkles size={11} className={baking ? 'animate-spin text-flinch-accent' : 'text-flinch-accent'} />
+                <span>{baking ? 'Baking...' : cachedFramesCount >= totalFrames ? 'Re-bake All' : 'Bake Animation'}</span>
+              </button>
+              <button
+                onClick={() => renderFrame(frame)}
+                disabled={loading || baking}
+                className="text-flinch-text-muted hover:text-flinch-text flinch-transition flex items-center gap-1"
+              >
+                <RefreshCw size={10} className={loading ? 'animate-spin' : ''} />
+                <span>Rerender</span>
+              </button>
+            </>
           )}
-          <span>Frame {frame} of {frameRange[1]}</span>
+          <span>
+            Frame {frame} of {endFrame}
+            {cachedFramesCount > 0 && (
+              <span className="text-flinch-accent ml-1.5 font-normal">
+                ({cachedFramesCount}/{totalFrames} cached)
+              </span>
+            )}
+          </span>
         </div>
       </div>
 
       {/* Preview canvas */}
       <div className="flex-1 flex items-center justify-center bg-black/30 relative overflow-hidden min-h-0">
-        {loading && (
+        {(loading || baking) && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/40 z-10 backdrop-blur-[1px]">
             <div className="flex flex-col items-center gap-2 bg-flinch-surface/80 px-4 py-2.5 rounded-lg border border-flinch-border shadow-lg">
               <Loader2 className="w-5 h-5 text-flinch-accent animate-spin" />
-              <span className="text-2xs font-mono text-flinch-text">Evaluating Frame {frame}...</span>
+              <span className="text-2xs font-mono text-flinch-text">
+                {baking ? bakingText : `Evaluating Frame ${frame}...`}
+              </span>
             </div>
           </div>
         )}
 
-        {error && !loading && (
+        {error && !loading && !baking && (
           <div className="flex flex-col items-center gap-2 text-flinch-error p-4 text-center max-w-sm">
             <AlertCircle size={22} />
             <span className="text-xs font-semibold">Frame Render Error</span>
@@ -165,7 +265,7 @@ export function FrameScrubber({ script, frameRange }: FrameScrubberProps) {
               setError("Image failed to load. The frame might not have been generated correctly by Blender.");
             }}
           />
-        ) : !loading && !error ? (
+        ) : !loading && !baking && !error ? (
           <div className="text-center p-6 text-flinch-text-muted">
             <div className="text-4xl mb-3 opacity-30">🧊</div>
             <div className="text-sm font-medium text-flinch-text-dim mb-1">
@@ -198,26 +298,28 @@ export function FrameScrubber({ script, frameRange }: FrameScrubberProps) {
         <div className="flex items-center gap-2">
           {/* Playback buttons */}
           <button
-            onClick={() => setFrame(frameRange[0])}
+            onClick={() => setFrame(startFrame)}
             className="text-flinch-text-dim hover:text-flinch-text flinch-transition p-1"
-            title="Go to start (Frame 1)"
+            title={`Go to start (Frame ${startFrame})`}
           >
             <SkipBack size={14} />
           </button>
           <button
-            onClick={() => setPlaying((p) => !p)}
+            onClick={togglePlay}
+            disabled={baking}
             className={cn(
               "w-7 h-7 rounded-full flex items-center justify-center flinch-transition",
-              "bg-flinch-accent text-white hover:bg-flinch-accent-dim"
+              "bg-flinch-accent text-white hover:bg-flinch-accent-dim",
+              baking && "opacity-50 cursor-not-allowed"
             )}
-            title={playing ? 'Pause' : 'Play'}
+            title={playing ? 'Pause' : 'Play (Smooth 24fps)'}
           >
             {playing ? <Pause size={12} /> : <Play size={12} />}
           </button>
           <button
-            onClick={() => setFrame(frameRange[1])}
+            onClick={() => setFrame(endFrame)}
             className="text-flinch-text-dim hover:text-flinch-text flinch-transition p-1"
-            title={`Go to end (Frame ${frameRange[1]})`}
+            title={`Go to end (Frame ${endFrame})`}
           >
             <SkipForward size={14} />
           </button>
@@ -225,22 +327,31 @@ export function FrameScrubber({ script, frameRange }: FrameScrubberProps) {
           {/* Scrubber slider */}
           <input
             type="range"
-            min={frameRange[0]}
-            max={frameRange[1]}
+            min={startFrame}
+            max={endFrame}
             value={frame}
-            onChange={(e) => { setPlaying(false); setFrame(Number(e.target.value)); }}
+            onChange={(e) => {
+              setPlaying(false);
+              const val = Number(e.target.value);
+              setFrame(val);
+              const cached = frameCacheRef.current.get(val);
+              if (cached) {
+                setPreviewSrc(cached);
+              }
+            }}
             className="flex-1 h-1.5 accent-flinch-accent cursor-pointer"
           />
 
           {/* Frame counter */}
           <span className="text-xs font-mono text-flinch-text-dim shrink-0 w-24 text-right">
-            {frame} / {frameRange[1]}
+            {frame} / {endFrame}
             <span className="text-flinch-text-muted ml-1">
               ({totalFrames}f)
             </span>
           </span>
         </div>
       </div>
+
     </div>
   );
 }

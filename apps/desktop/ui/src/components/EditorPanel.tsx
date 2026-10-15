@@ -9,7 +9,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { tempDir, join } from '@tauri-apps/api/path';
 import { save } from '@tauri-apps/plugin-dialog';
 import { cn } from '../lib/utils';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { FrameScrubber } from './FrameScrubber';
 
 const DEFAULT_SCRIPT = ``;
@@ -79,12 +79,14 @@ export function EditorPanel() {
     } catch (err) { console.error(err); }
   };
 
-  const frameRange: [number, number] = currentAttempt?.harness_result?.scene_stats
-    ? [
-        currentAttempt.harness_result.scene_stats.frame_range[0],
-        currentAttempt.harness_result.scene_stats.frame_range[1],
-      ]
-    : [1, 60];
+  const frameRange: [number, number] = useMemo(() => {
+    return currentAttempt?.harness_result?.scene_stats
+      ? [
+          currentAttempt.harness_result.scene_stats.frame_range[0],
+          currentAttempt.harness_result.scene_stats.frame_range[1],
+        ]
+      : [1, 60];
+  }, [currentAttempt?.harness_result?.scene_stats?.frame_range]);
 
   if (attempts.length === 0) {
     return (
