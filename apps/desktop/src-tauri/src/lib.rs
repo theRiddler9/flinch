@@ -177,10 +177,23 @@ async fn render_frame(
     out_path: String,
     engine: String,
 ) -> Result<String, String> {
+    // UUID suffix prevents concurrent renders of different frames from clobbering each other's
+    // script / result files (they all used to share the same name e.g. flinch_frame_5.py).
+    let uid = uuid::Uuid::new_v4().simple().to_string();
     let tmp = std::env::temp_dir();
-    let script_path = tmp.join(format!("flinch_frame_{}.py", frame));
-    let result_path = tmp.join(format!("flinch_frame_{}_result.json", frame));
+    let script_path = tmp.join(format!("flinch_frame_{}_{}.py", frame, uid));
+    let result_path = tmp.join(format!("flinch_frame_{}_{}_result.json", frame, uid));
     std::fs::write(&script_path, &script).map_err(|e| e.to_string())?;
+
+    // On Windows the frontend sends a backslash path (C:\Users\...\flinch_frame_5.png).
+    // Blender's Python receives this as the --render-image arg and sets r.filepath to it.
+    // With use_file_extension=False, Blender silently fails to write when the path has
+    // backslashes — it interprets the path as a prefix rather than a full path.
+    // Normalise to forward slashes so Blender sees a valid path on all platforms.
+    #[cfg(windows)]
+    let out_path_for_blender = out_path.replace('\\', "/");
+    #[cfg(not(windows))]
+    let out_path_for_blender = out_path.clone();
 
     let runner = state.runner.read().await;
     // Use the runner's blender bin directly for a frame render
@@ -201,7 +214,7 @@ async fn render_frame(
         .arg("--out")
         .arg(&result_path)
         .arg("--render-image")
-        .arg(&out_path)
+        .arg(&out_path_for_blender)
         .arg("--frame")
         .arg(frame.to_string())
         .arg("--engine")
@@ -220,18 +233,61 @@ async fn render_frame(
         let _ = std::fs::remove_file(&script_path);
         let _ = std::fs::remove_file(&result_path);
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("Blender frame render failed: {}", stderr));
+        // Try to surface the harness result JSON for a more actionable error message.
+        let result_json = std::fs::read_to_string(&result_path).unwrap_or_else(|_| String::new());
+        return Err(format!(
+            "Blender frame render failed (exit {:?}).\nStderr: {}\nResult: {}",
+            output.status.code(),
+            stderr
+                .lines()
+                .filter(|l| !l.trim().is_empty())
+                .collect::<Vec<_>>()
+                .join("\n"),
+            if result_json.is_empty() {
+                "No result.json written".to_string()
+            } else {
+                result_json
+            }
+        ));
     }
 
+    // The harness catches render failures internally and returns ok=true/exit=0.
+    // Check whether the image was actually written.
     if !std::path::Path::new(&out_path).exists() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        // Parse result JSON to get the render-specific error, if any.
         let result_json =
             std::fs::read_to_string(&result_path).unwrap_or_else(|_| "No result.json".to_string());
+        // Try to extract a render error message from the JSON for a user-friendly message.
+        let render_err = serde_json::from_str::<serde_json::Value>(&result_json)
+            .ok()
+            .and_then(|v| {
+                v.get("render")
+                    .and_then(|r| r.get("error"))
+                    .and_then(|e| e.as_str().map(String::from))
+                    .or_else(|| {
+                        v.get("error")
+                            .and_then(|e| e.get("message"))
+                            .and_then(|m| m.as_str().map(String::from))
+                    })
+            })
+            .unwrap_or_else(|| {
+                "Blender exited successfully but did not write the image file.".to_string()
+            });
         let _ = std::fs::remove_file(&script_path);
         let _ = std::fs::remove_file(&result_path);
         return Err(format!(
-            "The image was not created. This usually means the script crashed during execution before it could reach the render phase.\nStderr: {}\nResult JSON: {}",
-            stderr, result_json
+            "Frame render produced no image.\n{}\nStderr tail: {}",
+            render_err,
+            stderr
+                .lines()
+                .rev()
+                .take(10)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .collect::<Vec<_>>()
+                .join("\n"),
         ));
     }
 

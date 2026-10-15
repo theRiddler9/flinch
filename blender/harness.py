@@ -249,7 +249,9 @@ def configure_output(scene, path):
     r.resolution_x = 640
     r.resolution_y = 360
     r.resolution_percentage = 100
-    r.filepath = path
+    # Blender requires forward slashes on Windows; backslashes cause silent write failures
+    # when use_file_extension=False is set (it treats the path as a prefix, not a full path).
+    r.filepath = path.replace("\\", "/")
     r.use_file_extension = False          # write exactly to `path`
     r.image_settings.file_format = "PNG"
     _set(r.image_settings, "color_mode", "RGB")
@@ -371,6 +373,9 @@ def render_preview(scene, path, frame, engine):
     A render problem must not turn a working script into a failed one, so this is
     reported separately under result["render"].
     """
+    # Normalize to forward slashes; Blender's Python on Windows handles them but
+    # backslashes in r.filepath with use_file_extension=False cause silent failures.
+    path = path.replace("\\", "/")
     notes = []
     info = {
         "ok": False, "path": path, "frame": frame, "engine": None, "camera": None,
