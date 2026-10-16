@@ -49,6 +49,33 @@ impl Agent {
         &self,
         user_prompt: &str,
         spec: Option<&str>,
+        log_cb: F,
+        token_cb: T,
+    ) -> Result<AgentResult>
+    where
+        F: FnMut(String) -> Fut1,
+        Fut1: std::future::Future<Output = ()> + Send,
+        T: FnMut(String) -> Fut2,
+        Fut2: std::future::Future<Output = ()> + Send,
+    {
+        self.run_task_with_prompts(
+            user_prompt,
+            spec,
+            &self.config.system_prompt,
+            &self.config.feedback_prompt_template,
+            log_cb,
+            token_cb,
+        )
+        .await
+    }
+
+    /// Run with caller-supplied prompts (hot-reload support — reads fresh from disk each call).
+    pub async fn run_task_with_prompts<F, Fut1, T, Fut2>(
+        &self,
+        user_prompt: &str,
+        spec: Option<&str>,
+        system_prompt: &str,
+        feedback_prompt_template: &str,
         mut log_cb: F,
         mut token_cb: T,
     ) -> Result<AgentResult>
@@ -61,7 +88,7 @@ impl Agent {
         let mut messages = vec![
             ChatMessage {
                 role: "system".to_string(),
-                content: self.config.system_prompt.clone(),
+                content: system_prompt.to_string(),
             },
             ChatMessage {
                 role: "user".to_string(),
@@ -200,9 +227,7 @@ impl Agent {
                     }
                 };
 
-                let feedback = self
-                    .config
-                    .feedback_prompt_template
+                let feedback = feedback_prompt_template
                     .replace("{stage}", &harness_res.stage)
                     .replace("{error}", &trunc(&error_detail, 2000))
                     .replace("{stdout}", &trunc(&harness_res.stdout, 1500))

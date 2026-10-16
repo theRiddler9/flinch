@@ -105,9 +105,15 @@ async fn run_prompt(
         }
     };
 
+    // Hot-reload prompts from disk on every run so file edits take effect immediately.
+    let sys_path = resolve_workspace_path("prompts/system.md");
+    let system_prompt = fs::read_to_string(&sys_path).unwrap_or_default();
+    let fb_path = resolve_workspace_path("prompts/feedback.md");
+    let feedback_prompt = fs::read_to_string(&fb_path).unwrap_or_default();
+
     let agent = state.agent.read().await;
     let result = agent
-        .run_task(&prompt, None, log_cb, token_cb)
+        .run_task_with_prompts(&prompt, None, &system_prompt, &feedback_prompt, log_cb, token_cb)
         .await
         .map_err(|e| e.to_string())?;
 
