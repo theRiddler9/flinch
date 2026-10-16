@@ -34,11 +34,14 @@ struct OpenAiRequest<'a> {
     model: &'a str,
     messages: &'a [super::ChatMessage],
     temperature: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_tokens: Option<u32>,
     stream: bool,
 }
 
 #[derive(Deserialize, Debug)]
 struct OpenAiResponseChunk {
+    #[serde(default)]
     choices: Vec<ChoiceChunk>,
 }
 
@@ -63,6 +66,7 @@ impl LlmProvider for OpenAiCompatProvider {
             model: &self.model,
             messages: &req.messages,
             temperature: req.temperature,
+            max_tokens: Some(8192),
             stream: true,
         };
 

@@ -538,7 +538,7 @@ async fn save_settings(
             timeout_sec: 60,
         })),
         AgentConfig {
-            max_attempts: 5,
+            max_attempts: 3,
             system_prompt,
             feedback_prompt_template: feedback_prompt,
         },
@@ -899,7 +899,7 @@ pub fn run() {
                     timeout_sec: 60,
                 })),
                 AgentConfig {
-                    max_attempts: 5,
+                    max_attempts: 3,
                     system_prompt,
                     feedback_prompt_template: feedback_prompt,
                 },

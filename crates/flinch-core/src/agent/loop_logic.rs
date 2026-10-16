@@ -148,21 +148,22 @@ impl Agent {
                 tokio::time::sleep(std::time::Duration::from_millis(500 * (retry + 1))).await;
             }
 
-            if let Some(err_msg) = stream_err {
-                if raw_response.trim().is_empty() {
-                    let full_err = format!("Network or provider error: {}", err_msg);
-                    attempts_record.push(AttemptRecord {
-                        prompt: user_prompt.to_string(),
-                        raw_response: raw_response.clone(),
-                        script: "".to_string(),
-                        harness_result: None,
-                    });
-                    messages.push(ChatMessage {
-                        role: "user".to_string(),
-                        content: full_err,
-                    });
-                    continue 'attempt_loop;
-                }
+            if raw_response.trim().is_empty() {
+                let err_msg = stream_err.unwrap_or_else(|| {
+                    "Provider returned empty response after retries".to_string()
+                });
+                let full_err = format!("Network or provider error: {}", err_msg);
+                attempts_record.push(AttemptRecord {
+                    prompt: user_prompt.to_string(),
+                    raw_response: raw_response.clone(),
+                    script: "".to_string(),
+                    harness_result: None,
+                });
+                messages.push(ChatMessage {
+                    role: "user".to_string(),
+                    content: full_err,
+                });
+                continue 'attempt_loop;
             }
 
             messages.push(ChatMessage {
@@ -281,16 +282,32 @@ fn extract_python_code(text: &str) -> String {
     let mut in_block = false;
 
     for line in text.lines() {
-        if line.starts_with("```python") || line.starts_with("``` python") {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("```python")
+            || trimmed.starts_with("``` python")
+            || trimmed.starts_with("```py")
+        {
             in_block = true;
             continue;
-        } else if line.starts_with("```") && in_block {
+        } else if trimmed.starts_with("```") && in_block {
             break;
         }
 
         if in_block {
             script.push_str(line);
             script.push('\n');
+        }
+    }
+
+    if script.trim().is_empty() && text.contains("import bpy") {
+        if let Some(idx) = text.find("import bpy") {
+            let candidate = &text[idx..];
+            let cleaned = candidate
+                .lines()
+                .take_while(|l| !l.trim_start().starts_with("```"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            return cleaned.trim().to_string();
         }
     }
 
