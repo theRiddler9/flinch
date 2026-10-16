@@ -105,34 +105,63 @@ impl Agent {
             ))
             .await;
 
-            let req = ChatRequest {
-                messages: messages.clone(),
-                temperature: 0.2, // low temp for coding
-            };
-
-            let mut stream = self.provider.stream_chat(req).await?;
             let mut raw_response = String::new();
+            let mut stream_err = None;
 
-            while let Some(chunk_res) = stream.next().await {
-                match chunk_res {
-                    Ok(chunk) => {
-                        raw_response.push_str(&chunk.content);
-                        token_cb(chunk.content).await;
-                    }
+            for retry in 0..3 {
+                let req = ChatRequest {
+                    messages: messages.clone(),
+                    temperature: 0.2, // low temp for coding
+                };
+
+                let stream_res = self.provider.stream_chat(req).await;
+                let mut stream = match stream_res {
+                    Ok(s) => s,
                     Err(e) => {
-                        let err_msg = format!("Network or provider error: {}", e);
-                        attempts_record.push(AttemptRecord {
-                            prompt: user_prompt.to_string(),
-                            raw_response: raw_response.clone(),
-                            script: "".to_string(),
-                            harness_result: None,
-                        });
-                        messages.push(ChatMessage {
-                            role: "user".to_string(),
-                            content: err_msg,
-                        });
-                        continue 'attempt_loop;
+                        stream_err = Some(e.to_string());
+                        tokio::time::sleep(std::time::Duration::from_millis(500 * (retry + 1)))
+                            .await;
+                        continue;
                     }
+                };
+
+                raw_response.clear();
+                let mut chunk_err = false;
+                while let Some(chunk_res) = stream.next().await {
+                    match chunk_res {
+                        Ok(chunk) => {
+                            raw_response.push_str(&chunk.content);
+                            token_cb(chunk.content).await;
+                        }
+                        Err(e) => {
+                            stream_err = Some(e.to_string());
+                            chunk_err = true;
+                            break;
+                        }
+                    }
+                }
+
+                if !chunk_err && !raw_response.trim().is_empty() {
+                    stream_err = None;
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(500 * (retry + 1))).await;
+            }
+
+            if let Some(err_msg) = stream_err {
+                if raw_response.trim().is_empty() {
+                    let full_err = format!("Network or provider error: {}", err_msg);
+                    attempts_record.push(AttemptRecord {
+                        prompt: user_prompt.to_string(),
+                        raw_response: raw_response.clone(),
+                        script: "".to_string(),
+                        harness_result: None,
+                    });
+                    messages.push(ChatMessage {
+                        role: "user".to_string(),
+                        content: full_err,
+                    });
+                    continue 'attempt_loop;
                 }
             }
 

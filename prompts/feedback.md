@@ -28,5 +28,7 @@ CRITICAL REMINDERS TO FIX THE ERROR:
    mat.grease_pencil.fill_color = (R, G, B, 1.0)
    mat.grease_pencil.show_stroke = True
    ```
+8. If you hit `KeyError: 'bpy_prop_collection[key]: key "..." not found'` on `bsdf.inputs[...]` (such as `"Specular"`, `"Transmission"`, `"Subsurface"`, `"Emission"`): In Blender 5.2 Principled BSDF, sockets were renamed! Use `bsdf.inputs['Specular IOR Level']` (NOT `'Specular'`), `bsdf.inputs['Transmission Weight']` (NOT `'Transmission'`), `bsdf.inputs['Subsurface Weight']` (NOT `'Subsurface'`), `bsdf.inputs['Emission Color']` (NOT `'Emission'`), `bsdf.inputs['Coat Weight']` (NOT `'Clearcoat'`).
+9. If you hit `TypeError: Converting py args to operator properties` or enum errors: Check operator argument names (e.g. `bpy.ops.mesh.primitive_torus_add` uses `major_segments` and `minor_segments`, NOT `segments`) and mode enum (use `bpy.ops.object.mode_set(mode='OBJECT')`, NOT `mode='END'`).
 
 Please fix the error and output the FULL corrected script in a single fenced `python` block. NO markdown commentary.

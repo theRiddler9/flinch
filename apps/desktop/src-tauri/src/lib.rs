@@ -113,7 +113,14 @@ async fn run_prompt(
 
     let agent = state.agent.read().await;
     let result = agent
-        .run_task_with_prompts(&prompt, None, &system_prompt, &feedback_prompt, log_cb, token_cb)
+        .run_task_with_prompts(
+            &prompt,
+            None,
+            &system_prompt,
+            &feedback_prompt,
+            log_cb,
+            token_cb,
+        )
         .await
         .map_err(|e| e.to_string())?;
 
@@ -531,7 +538,7 @@ async fn save_settings(
             timeout_sec: 60,
         })),
         AgentConfig {
-            max_attempts: 3,
+            max_attempts: 5,
             system_prompt,
             feedback_prompt_template: feedback_prompt,
         },
@@ -892,7 +899,7 @@ pub fn run() {
                     timeout_sec: 60,
                 })),
                 AgentConfig {
-                    max_attempts: 3,
+                    max_attempts: 5,
                     system_prompt,
                     feedback_prompt_template: feedback_prompt,
                 },

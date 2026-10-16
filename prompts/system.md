@@ -39,9 +39,18 @@ CRITICAL DIRECTIVES TO PREVENT HALLUCINATIONS & CRASHES:
      ```
    - NEVER invent attributes. Use exactly: `cube.location`, `cube.rotation_euler`, `cube.scale`. These ALWAYS take EXACTLY 3 values `(x, y, z)`.
 
-4. MATERIALS & COLORS:
+4. MATERIALS & COLORS (BLENDER 5.2 PRINCIPLED BSDF):
    - To assign a material: `obj.data.materials.append(mat)` (NEVER `obj.material = mat`).
    - Colors are ALWAYS 4 values (RGBA). Example: `(1.0, 0.0, 0.0, 1.0)`.
+   - CRITICAL: Blender 5.2 uses Principled BSDF v2 socket names. Socket names CHANGED from older Blender versions:
+     - Use `bsdf.inputs['Base Color'].default_value = (R, G, B, 1.0)`
+     - Use `bsdf.inputs['Roughness'].default_value = 0.5`
+     - Use `bsdf.inputs['Metallic'].default_value = 0.0`
+     - Use `bsdf.inputs['Specular IOR Level'].default_value = 0.5` (DO NOT use `'Specular'`, it does NOT exist and will crash!).
+     - Use `bsdf.inputs['Transmission Weight'].default_value = 1.0` (DO NOT use `'Transmission'`).
+     - Use `bsdf.inputs['Subsurface Weight'].default_value = 0.1` (DO NOT use `'Subsurface'`).
+     - Use `bsdf.inputs['Emission Color'].default_value = (R, G, B, 1.0)` (DO NOT use `'Emission'`).
+     - Use `bsdf.inputs['Coat Weight'].default_value = 0.5` (DO NOT use `'Clearcoat'`).
    - Creating a solid color material safely:
      ```python
      mat = bpy.data.materials.new(name="RedNode")
@@ -53,14 +62,18 @@ CRITICAL DIRECTIVES TO PREVENT HALLUCINATIONS & CRASHES:
      
      bsdf = nodes.new(type='ShaderNodeBsdfPrincipled')
      bsdf.inputs['Base Color'].default_value = (1.0, 0.0, 0.0, 1.0) # 4 values!
+     bsdf.inputs['Roughness'].default_value = 0.4
+     bsdf.inputs['Specular IOR Level'].default_value = 0.5 # 'Specular IOR Level', NOT 'Specular'!
      
      out = nodes.new(type='ShaderNodeOutputMaterial')
      mat.node_tree.links.new(bsdf.outputs['BSDF'], out.inputs['Surface'])
      ```
 
-5. MODIFIERS:
+5. MODIFIERS & OPERATORS:
    - To add a modifier: `mod = obj.modifiers.new(name="Subsurf", type='SUBSURF')`
    - CRITICAL: For subdivision, the property is `mod.levels = 2` and `mod.render_levels = 2`. NEVER use `mod.subdivisions` (it does not exist and will crash!).
+   - For `primitive_torus_add`, use `major_segments` and `minor_segments` (NEVER `segments`).
+   - For `mode_set`, use `bpy.ops.object.mode_set(mode='OBJECT')` (NEVER `mode='END'`).
 
 6. ANIMATION:
    - Animate properties by inserting keyframes directly:
