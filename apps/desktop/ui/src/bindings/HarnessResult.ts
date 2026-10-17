@@ -3,4 +3,4 @@ import type { CheckDetail } from "./CheckDetail";
 import type { ErrorDetail } from "./ErrorDetail";
 import type { SceneStats } from "./SceneStats";
 
-export type HarnessResult = { schema: number, ok: boolean, stage: string, error: ErrorDetail | null, stdout: string, warnings: Array<string>, scene_stats: SceneStats, checks: Array<CheckDetail>, duration_ms: number, };
+export type HarnessResult = { schema: number, ok: boolean, stage: string, error: ErrorDetail | null, stdout: string, warnings: Array<string>, scene_stats: SceneStats, checks: Array<CheckDetail>, duration_ms: number, rewritten_script?: string | null, };

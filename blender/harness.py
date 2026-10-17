@@ -32,6 +32,55 @@ DEFAULT_BASE_COLOR = (0.8, 0.8, 0.8, 1.0)
 # AST Compatibility Rewriter (Blender 4.0+/5.2)
 # --------------------------------------------------------------------------------------
 
+SOCKET_HELPERS_CODE = '''
+def _flinch_socket(inputs, name):
+    if hasattr(inputs, "__getitem__"):
+        try:
+            return inputs[name]
+        except (KeyError, IndexError):
+            pass
+    _aliases = {
+        "Specular": "Specular IOR Level",
+        "Transmission": "Transmission Weight",
+        "Subsurface": "Subsurface Weight",
+        "Subsurface Color": "Base Color",
+        "Clearcoat": "Coat Weight",
+        "Clearcoat Roughness": "Coat Roughness",
+        "Coat": "Coat Weight",
+        "Sheen": "Sheen Weight",
+        "Emission": "Emission Color",
+    }
+    if name in _aliases and hasattr(inputs, "__getitem__"):
+        try:
+            return inputs[_aliases[name]]
+        except (KeyError, IndexError):
+            pass
+    return inputs[name]
+
+def _flinch_socket_get(inputs, name, default=None):
+    if hasattr(inputs, "get"):
+        val = inputs.get(name)
+        if val is not None:
+            return val
+    _aliases = {
+        "Specular": "Specular IOR Level",
+        "Transmission": "Transmission Weight",
+        "Subsurface": "Subsurface Weight",
+        "Subsurface Color": "Base Color",
+        "Clearcoat": "Coat Weight",
+        "Clearcoat Roughness": "Coat Roughness",
+        "Coat": "Coat Weight",
+        "Sheen": "Sheen Weight",
+        "Emission": "Emission Color",
+    }
+    if name in _aliases and hasattr(inputs, "get"):
+        val = inputs.get(_aliases[name])
+        if val is not None:
+            return val
+    return default
+'''
+
+
 class BlenderCompatRewriter(ast.NodeTransformer):
     """Rewrites legacy/deprecated Blender 2.8x-3.6x APIs into Blender 4.0+/5.2 compatible equivalents.
     Prevents common LLM hallucinations and breaking API changes from crashing scripts."""
@@ -48,34 +97,40 @@ class BlenderCompatRewriter(ast.NodeTransformer):
         "Emission": "Emission Color",
     }
 
+    def __init__(self):
+        super().__init__()
+        self.used_socket_helper = False
+
     def visit_Subscript(self, node):
         self.generic_visit(node)
-        # Rewrite node.inputs['Specular'] -> node.inputs['Specular IOR Level']
+        # Safely wrap node.inputs['Specular'] with fallback helper instead of unconditionally renaming
         if isinstance(node.value, ast.Attribute) and node.value.attr == "inputs":
             if isinstance(node.slice, ast.Constant) and isinstance(node.slice.value, str):
                 if node.slice.value in self.SOCKET_MAP:
-                    node.slice.value = self.SOCKET_MAP[node.slice.value]
+                    self.used_socket_helper = True
+                    return ast.Call(
+                        func=ast.Name(id="_flinch_socket", ctx=ast.Load()),
+                        args=[node.value, node.slice],
+                        keywords=[],
+                    )
         return node
 
     def visit_Call(self, node):
         self.generic_visit(node)
-        # 1. Wrap material creation: bpy.data.materials.new(...) -> __flinch_material_new(...)
-        if isinstance(node.func, ast.Attribute) and node.func.attr == "new":
-            if isinstance(node.func.value, ast.Attribute) and node.func.value.attr == "materials":
-                return ast.Call(
-                    func=ast.Name(id="__flinch_material_new", ctx=ast.Load()),
-                    args=[node],
-                    keywords=[],
-                )
-
-        # 2. Rewrite node.inputs.get('Specular', ...)
+        # 1. Safely wrap node.inputs.get('Specular', ...)
         if isinstance(node.func, ast.Attribute) and node.func.attr == "get":
             if isinstance(node.func.value, ast.Attribute) and node.func.value.attr == "inputs":
                 if node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
                     if node.args[0].value in self.SOCKET_MAP:
-                        node.args[0].value = self.SOCKET_MAP[node.args[0].value]
+                        self.used_socket_helper = True
+                        default_arg = node.args[1] if len(node.args) > 1 else ast.Constant(value=None)
+                        return ast.Call(
+                            func=ast.Name(id="_flinch_socket_get", ctx=ast.Load()),
+                            args=[node.func.value, node.args[0], default_arg],
+                            keywords=[],
+                        )
 
-        # 3. Rewrite bpy.ops.object.mode_set(mode='END'/'DEFAULT') -> mode='OBJECT'
+        # 2. Rewrite bpy.ops.object.mode_set(mode='END'/'DEFAULT') -> mode='OBJECT'
         if isinstance(node.func, ast.Attribute) and node.func.attr == "mode_set":
             for kw in node.keywords:
                 if kw.arg == "mode" and isinstance(kw.value, ast.Constant) and kw.value.value in ("END", "DEFAULT"):
@@ -83,7 +138,7 @@ class BlenderCompatRewriter(ast.NodeTransformer):
             if node.args and isinstance(node.args[0], ast.Constant) and node.args[0].value in ("END", "DEFAULT"):
                 node.args[0].value = "OBJECT"
 
-        # 4. Rewrite bpy.ops.mesh.primitive_torus_add(segments=...) -> major_segments
+        # 3. Rewrite bpy.ops.mesh.primitive_torus_add(segments=...) -> major_segments
         if isinstance(node.func, ast.Attribute) and node.func.attr == "primitive_torus_add":
             for kw in node.keywords:
                 if kw.arg == "segments":
@@ -102,15 +157,6 @@ class BlenderCompatRewriter(ast.NodeTransformer):
             node.attr = "color"
 
         return node
-
-
-def __flinch_material_new(mat):
-    try:
-        if HAS_BPY and hasattr(bpy.data.materials, "create_gpencil_data"):
-            bpy.data.materials.create_gpencil_data(mat)
-    except Exception:
-        pass
-    return mat
 
 
 # --------------------------------------------------------------------------------------
@@ -581,6 +627,7 @@ def main():
         "checks": [],
         "render": None,
         "duration_ms": 0,
+        "rewritten_script": None,
     }
 
     parser = argparse.ArgumentParser()
@@ -623,10 +670,23 @@ def main():
         try:
             tree = ast.parse(code)
             try:
-                tree = BlenderCompatRewriter().visit(tree)
+                rewriter = BlenderCompatRewriter()
+                tree = rewriter.visit(tree)
+                if rewriter.used_socket_helper:
+                    helper_tree = ast.parse(SOCKET_HELPERS_CODE)
+                    tree.body = helper_tree.body + tree.body
                 ast.fix_missing_locations(tree)
+                unparsed = ast.unparse(tree)
+                if unparsed != code:
+                    result["rewritten_script"] = unparsed
+                    try:
+                        with open(args.script, "w") as f:
+                            f.write(unparsed)
+                    except Exception:
+                        pass
                 compiled_code = compile(tree, "<generated>", "exec")
-            except Exception:
+            except Exception as rewrite_err:
+                result["warnings"].append(f"Compatibility transformation skipped: {rewrite_err}")
                 compiled_code = compile(code, "<generated>", "exec")
         except SyntaxError as e:
             result["stage"] = "syntax"
@@ -644,7 +704,6 @@ def main():
         buf = io.StringIO()
         exec_globals = {
             "__name__": "__main__",
-            "__flinch_material_new": __flinch_material_new,
         }
         try:
             with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):

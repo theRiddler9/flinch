@@ -60,4 +60,6 @@ pub struct HarnessResult {
     pub scene_stats: SceneStats,
     pub checks: Vec<CheckDetail>,
     pub duration_ms: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rewritten_script: Option<String>,
 }
