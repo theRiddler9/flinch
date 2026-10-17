@@ -175,7 +175,7 @@ export const useStore = create<RunState>()(
             isRunning: false,
             activeAttemptIndex: Math.max(0, result.attempts.length - 1),
           });
-          addMessage('assistant', result.success ? '✨ Script executed successfully!' : '❌ Script failed after all attempts.');
+          addMessage('assistant', result.success ? 'Script executed successfully.' : 'Script execution failed after all attempts.');
           updateQueue(queueId, { status: result.success ? 'done' : 'error' });
           await loadHistory();
         } catch (e: unknown) {
