@@ -105,11 +105,10 @@ async fn run_prompt(
         }
     };
 
-    // Hot-reload prompts from disk on every run so file edits take effect immediately.
-    let sys_path = resolve_workspace_path("prompts/system.md");
-    let system_prompt = fs::read_to_string(&sys_path).unwrap_or_default();
-    let fb_path = resolve_workspace_path("prompts/feedback.md");
-    let feedback_prompt = fs::read_to_string(&fb_path).unwrap_or_default();
+    // Hot-reload prompts from disk on every run so file edits take effect immediately,
+    // with fallback to compiled prompts if running in packaged binary.
+    let system_prompt = read_prompt("prompts/system.md", DEFAULT_SYSTEM_PROMPT);
+    let feedback_prompt = read_prompt("prompts/feedback.md", DEFAULT_FEEDBACK_PROMPT);
 
     let agent = state.agent.read().await;
     let result = agent
@@ -493,6 +492,8 @@ async fn save_settings(
         .map(|c| c.provider.max_concurrency)
         .unwrap_or(1);
 
+    let max_tokens = existing_config.as_ref().and_then(|c| c.provider.max_tokens);
+
     // Save to flinch.toml
     let config = flinch_core::config::AppConfig {
         blender: flinch_core::config::BlenderConfig {
@@ -509,6 +510,7 @@ async fn save_settings(
             },
             api_key_env,
             max_concurrency,
+            max_tokens,
         },
     };
 
@@ -520,16 +522,15 @@ async fn save_settings(
         settings.base_url,
         settings.model,
         settings.api_key.trim().to_string(),
-    );
+    )
+    .with_max_tokens(max_tokens);
     let runner_new = Runner::new(RunnerConfig {
         blender_bin: resolved_bin.clone(),
         timeout_sec: 60,
     });
 
-    let sys_path = resolve_workspace_path("prompts/system.md");
-    let system_prompt = fs::read_to_string(&sys_path).unwrap_or_default();
-    let fb_path = resolve_workspace_path("prompts/feedback.md");
-    let feedback_prompt = fs::read_to_string(&fb_path).unwrap_or_default();
+    let system_prompt = read_prompt("prompts/system.md", DEFAULT_SYSTEM_PROMPT);
+    let feedback_prompt = read_prompt("prompts/feedback.md", DEFAULT_FEEDBACK_PROMPT);
 
     let agent_new = Agent::new(
         Arc::new(provider),
@@ -828,6 +829,21 @@ fn resolve_workspace_path(path: &str) -> PathBuf {
     PathBuf::from(path)
 }
 
+const DEFAULT_SYSTEM_PROMPT: &str = include_str!("../../../../prompts/system.md");
+const DEFAULT_FEEDBACK_PROMPT: &str = include_str!("../../../../prompts/feedback.md");
+
+pub fn read_prompt(path: &str, default_content: &'static str) -> String {
+    let resolved = resolve_workspace_path(path);
+    if resolved.exists() {
+        if let Ok(content) = fs::read_to_string(&resolved) {
+            if !content.trim().is_empty() {
+                return content;
+            }
+        }
+    }
+    default_content.to_string()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -847,7 +863,7 @@ pub fn run() {
             let app_config: Option<flinch_core::config::AppConfig> =
                 toml::from_str(&config_str).ok();
 
-            let (base_url, model, resolved_config_key, blender_bin) = match app_config {
+            let (base_url, model, resolved_config_key, blender_bin, max_tokens) = match app_config {
                 Some(cfg) => {
                     let k = cfg.provider.resolve_api_key();
                     (
@@ -855,6 +871,7 @@ pub fn run() {
                         cfg.provider.model,
                         k,
                         cfg.blender.bin,
+                        cfg.provider.max_tokens,
                     )
                 }
                 None => (
@@ -864,6 +881,7 @@ pub fn run() {
                         .or_else(|_| std::env::var("OPENAI_API_KEY"))
                         .unwrap_or_default(),
                     "blender".to_string(),
+                    None,
                 ),
             };
 
@@ -879,18 +897,16 @@ pub fn run() {
             }
 
             let resolved_blender_bin = resolve_blender_binary(&blender_bin);
-            let provider = OpenAiCompatProvider::new(base_url, model, api_key);
+            let provider =
+                OpenAiCompatProvider::new(base_url, model, api_key).with_max_tokens(max_tokens);
             let runner = Runner::new(RunnerConfig {
                 blender_bin: resolved_blender_bin.clone(),
                 timeout_sec: 60,
             });
 
-            // We must read prompts from current dir if not packaged
-            let sys_path = resolve_workspace_path("prompts/system.md");
-            let system_prompt = fs::read_to_string(&sys_path).unwrap_or_default();
-
-            let fb_path = resolve_workspace_path("prompts/feedback.md");
-            let feedback_prompt = fs::read_to_string(&fb_path).unwrap_or_default();
+            // Read prompts from disk (hot-reload) with compiled fallback if packaged
+            let system_prompt = read_prompt("prompts/system.md", DEFAULT_SYSTEM_PROMPT);
+            let feedback_prompt = read_prompt("prompts/feedback.md", DEFAULT_FEEDBACK_PROMPT);
 
             let agent = Agent::new(
                 Arc::new(provider),
