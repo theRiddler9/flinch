@@ -1,9 +1,9 @@
 import { useEffect, useCallback, useState } from 'react';
 import { useStore } from '../state/useStore';
 import {
-  Clock, CheckCircle as CheckCircle2, WarningCircle as AlertCircle, Sparkle as Sparkles, Gear as Settings2, MagicWand,
+  Clock, CheckCircle as CheckCircle2, WarningCircle as AlertCircle, Sparkle as Sparkles, Gear as Settings2,
   CaretDown as ChevronDown, CaretRight as ChevronRight, Lightning as Zap, Sun, Pulse,
-  RadioButton as CircleDot, SpinnerGap as Loader2, XCircle, Cpu, HardDrives as HardDrive, Gauge, ArrowSquareOut, Trash
+  RadioButton as CircleDot, SpinnerGap as Loader2, XCircle, Cpu, HardDrives as HardDrive, Gauge, Trash
 } from '@phosphor-icons/react';
 import { invoke } from '@tauri-apps/api/core';
 import type { AgentResult } from '../bindings/AgentResult';
@@ -55,7 +55,7 @@ export function Sidebar() {
         activeAttemptIndex: Math.max(0, result.attempts.length - 1),
         messages: [
           { id: Date.now().toString(), role: 'user', content: userPrompt },
-          { id: (Date.now() + 1).toString(), role: 'assistant', content: result.success ? '✨ Script executed successfully!' : '❌ Script failed after all attempts.' }
+          { id: (Date.now() + 1).toString(), role: 'assistant', content: result.success ? 'Script executed successfully.' : 'Script execution failed after all attempts.' }
         ],
       });
     } catch (e) {
@@ -84,16 +84,11 @@ export function Sidebar() {
   return (
     <div className="w-64 bg-flinch-base border-r border-flinch-border-dim flex flex-col h-full overflow-hidden">
       {/* Brand header */}
-      <div className="px-4 py-3 border-b border-flinch-border-dim flex items-center gap-3 shrink-0 bg-black/20">
-        <div className="relative w-8 h-8 rounded-lg bg-gradient-to-br from-[#f43f5e] to-[#8b5cf6] flex items-center justify-center shadow-[0_0_12px_rgba(244,63,94,0.4)] border border-white/10">
-          <div className="absolute inset-0 bg-gradient-to-b from-white/20 to-transparent rounded-lg opacity-50" />
-          <MagicWand size={20} weight="duotone" className="text-white drop-shadow-md z-10" />
+      <div className="px-4 py-3.5 border-b border-flinch-border-dim flex items-center justify-between shrink-0 bg-flinch-panel/40">
+        <div className="text-[14px] font-bold tracking-widest text-flinch-text select-none font-mono">
+          FLINCH
         </div>
-        <div className="flex flex-col justify-center">
-          <div className="text-[15px] font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white to-white/70 leading-tight">FLINCH</div>
-          <div className="text-[10px] uppercase font-medium tracking-widest text-flinch-accent/90 leading-tight">Blender AI</div>
-        </div>
-        <div className="ml-auto flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5">
           {doctorStatus === 'ok' ? (
             <div className="w-2 h-2 rounded-full bg-flinch-success" title="System OK" />
           ) : doctorStatus === 'checking' ? (
@@ -222,7 +217,10 @@ export function Sidebar() {
                   </div>
                 )}
                 {vramPct > 80 && (
-                  <p className="text-[10px] text-flinch-warning mt-0.5">⚠ High VRAM ({vramPct.toFixed(0)}%) — near OOM limit</p>
+                  <p className="text-[10px] text-flinch-warning mt-0.5 flex items-center gap-1">
+                    <AlertCircle size={11} className="shrink-0" />
+                    <span>High VRAM ({vramPct.toFixed(0)}%) — near OOM limit</span>
+                  </p>
                 )}
               </div>
 
@@ -348,29 +346,6 @@ export function Sidebar() {
 
       {/* Footer */}
       <div className="p-2 border-t border-flinch-border-dim space-y-0.5 shrink-0">
-        <button
-          className="w-full flex items-center justify-between px-3 py-2 rounded-md text-sm text-flinch-text-dim hover:text-flinch-text hover:bg-flinch-surface/60 flinch-transition group"
-          onClick={async () => {
-            const state = useStore.getState();
-            const result = state.finalResult;
-            if (result && result.attempts.length > 0) {
-              const latestAttempt = result.attempts[state.activeAttemptIndex ?? result.attempts.length - 1];
-              if (latestAttempt && latestAttempt.script) {
-                try {
-                  await invoke('open_in_blender', { script: latestAttempt.script });
-                } catch (e) {
-                  console.error("Failed to open in Blender:", e);
-                }
-              }
-            }
-          }}
-        >
-          <div className="flex items-center gap-2">
-            <ArrowSquareOut size={14} className="group-hover:text-flinch-accent flinch-transition" />
-            <span>Open in Blender</span>
-          </div>
-        </button>
-
         <button
           onClick={() => useStore.setState({ isSettingsOpen: true })}
           className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm text-flinch-text-dim hover:text-flinch-text hover:bg-flinch-surface/60 flinch-transition group"
