@@ -76,7 +76,7 @@ export function Sidebar() {
             });
           } else {
             const prevError = result.attempts[idx - 1]?.harness_result?.error;
-            const errorMsg = prevError ? `${(prevError as any).error_type || (prevError as any).type || 'Error'}: ${prevError.message || ''}` : 'Execution error';
+            const errorMsg = prevError ? `${prevError.type || 'Error'}: ${prevError.message || ''}` : 'Execution error';
             loadedMessages.push({
               id: `${Date.now()}-user-${idx}`,
               role: 'user',

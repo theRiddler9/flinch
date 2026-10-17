@@ -27,6 +27,7 @@ export function FrameScrubber({ script, frameRange }: FrameScrubberProps) {
   const [bakingText, setBakingText] = useState('');
   const [previewSrc, setPreviewSrc] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [blenderLaunchError, setBlenderLaunchError] = useState<string | null>(null);
   const [cachedFramesCount, setCachedFramesCount] = useState(0);
   const [openingInBlender, setOpeningInBlender] = useState(false);
 
@@ -38,11 +39,12 @@ export function FrameScrubber({ script, frameRange }: FrameScrubberProps) {
   const handleOpenInBlender = useCallback(async () => {
     if (!script) return;
     setOpeningInBlender(true);
+    setBlenderLaunchError(null);
     try {
       await invoke('open_in_blender', { script });
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error("Failed to open in Blender:", e);
-      setError(String(e));
+      setBlenderLaunchError(String(e));
     } finally {
       setTimeout(() => setOpeningInBlender(false), 2000);
     }
@@ -81,7 +83,7 @@ export function FrameScrubber({ script, frameRange }: FrameScrubberProps) {
         setCachedFramesCount(frameCacheRef.current.size);
         setPreviewSrc(b64DataUri);
         return true;
-      } catch (e: any) {
+      } catch (e: unknown) {
         setError(String(e));
         return false;
       } finally {
@@ -117,7 +119,7 @@ export function FrameScrubber({ script, frameRange }: FrameScrubberProps) {
       const current = frameCacheRef.current.get(frame) || frameCacheRef.current.get(startFrame);
       if (current) setPreviewSrc(current);
       return true;
-    } catch (e: any) {
+    } catch (e: unknown) {
       setError(String(e));
       return false;
     } finally {
@@ -252,6 +254,13 @@ export function FrameScrubber({ script, frameRange }: FrameScrubberProps) {
           </span>
         </div>
       </div>
+
+      {blenderLaunchError && (
+        <div className="px-3 py-1 bg-flinch-error/15 border-b border-flinch-error/30 text-2xs text-flinch-error font-mono flex items-center justify-between shrink-0">
+          <span className="truncate">Blender launch error: {blenderLaunchError}</span>
+          <button onClick={() => setBlenderLaunchError(null)} className="ml-2 text-flinch-text-muted hover:text-flinch-text">✕</button>
+        </div>
+      )}
 
       {/* Preview canvas */}
       <div className="flex-1 flex items-center justify-center bg-black/30 relative overflow-hidden min-h-0">

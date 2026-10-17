@@ -1,5 +1,5 @@
 import { useStore } from '../state/useStore';
-import { Editor, DiffEditor } from '@monaco-editor/react';
+import { Editor, DiffEditor, type Monaco } from '@monaco-editor/react';
 import {
   WarningCircle as AlertCircle, CheckCircle as CheckCircle2, DownloadSimple as Download, FileCode,
   CaretDown as ChevronDown, CaretRight as ChevronRight, Copy, Code as Code2, Sparkle as Sparkles,
@@ -24,7 +24,7 @@ export function EditorPanel() {
   const dragging = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const handleEditorWillMount = (monaco: any) => {
+  const handleEditorWillMount = (monaco: Monaco) => {
     monaco.editor.defineTheme('cursor-dark', {
       base: 'vs-dark',
       inherit: true,
@@ -338,7 +338,7 @@ export function EditorPanel() {
             <span className="uppercase tracking-wider font-mono">[TERMINAL] {currentAttempt.harness_result.stage} ERROR</span>
             {currentAttempt.harness_result.error && (
               <span className="ml-2 text-xs text-flinch-error/70 font-mono truncate">
-                {(currentAttempt.harness_result.error as any).error_type ?? (currentAttempt.harness_result.error as any).type}
+                {currentAttempt.harness_result.error.type}
               </span>
             )}
           </button>
@@ -347,7 +347,7 @@ export function EditorPanel() {
               {currentAttempt.harness_result.error && (
                 <div className="font-mono text-sm leading-relaxed mt-2">
                   <div className="text-flinch-error font-bold mb-2 text-base uppercase border-l-4 border-flinch-error pl-2">
-                    {(currentAttempt.harness_result.error as any).error_type ?? (currentAttempt.harness_result.error as any).type}: {currentAttempt.harness_result.error.message}
+                    {currentAttempt.harness_result.error.type}: {currentAttempt.harness_result.error.message}
                   </div>
                   {currentAttempt.harness_result.error.traceback && (
                     <pre className="text-flinch-text-dim whitespace-pre-wrap text-xs leading-relaxed bg-flinch-deep p-3 rounded-md border border-flinch-border">

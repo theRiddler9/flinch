@@ -74,6 +74,7 @@ interface RunState {
   updateQueue: (id: string, patch: Partial<QueueEntry>) => void;
   setPrompt: (prompt: string) => void;
   appendToken: (token: string) => void;
+  resetCurrentAssistantMessage: () => void;
   addMessage: (role: 'user' | 'assistant', content: string) => void;
   startRun: (prompt: string) => Promise<void>;
   cancelRun: () => Promise<void>;
@@ -136,6 +137,17 @@ export const useStore = create<RunState>()(
             messages[messages.length - 1] = { ...last, content: last.content + token };
           } else {
             messages.push({ id: Date.now().toString(), role: 'assistant', content: token });
+          }
+          return { messages };
+        });
+      },
+
+      resetCurrentAssistantMessage: () => {
+        set((state) => {
+          const messages = [...state.messages];
+          const last = messages[messages.length - 1];
+          if (last && last.role === 'assistant') {
+            messages.pop();
           }
           return { messages };
         });

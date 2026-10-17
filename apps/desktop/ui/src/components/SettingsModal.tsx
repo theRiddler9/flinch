@@ -128,10 +128,10 @@ export function SettingsModal({
       
     } catch (e) {
       if (e instanceof z.ZodError) {
-        const fieldErrors: any = {};
-        (e as any).errors.forEach((err: any) => {
+        const fieldErrors: Partial<Record<keyof Settings, string>> = {};
+        e.issues.forEach((err) => {
           if (err.path[0]) {
-            fieldErrors[err.path[0]] = err.message;
+            fieldErrors[err.path[0] as keyof Settings] = err.message;
           }
         });
         setErrors(fieldErrors);
