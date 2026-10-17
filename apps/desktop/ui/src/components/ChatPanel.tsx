@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, type FormEvent } from 'react';
 import { useStore } from '../state/useStore';
-import { PaperPlaneRight as Send, Stop as Square, TerminalWindow as Terminal, SpinnerGap as Loader2, User, Code } from '@phosphor-icons/react';
+import { PaperPlaneRight as Send, Stop as Square, TerminalWindow as Terminal, SpinnerGap as Loader2, User, Code, Copy, Check } from '@phosphor-icons/react';
 import { cn } from '../lib/utils';
 
 export function ChatPanel() {
@@ -88,7 +88,7 @@ export function ChatPanel() {
               )}
               <span className="text-[10px] uppercase tracking-wider font-bold opacity-50">{msg.role === 'user' ? 'You' : 'Flinch'}</span>
             </div>
-            <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+            <ChatMessageContent content={msg.content} />
           </div>
         ))}
 
@@ -165,3 +165,66 @@ export function ChatPanel() {
     </div>
   );
 }
+
+function ChatMessageContent({ content }: { content: string }) {
+  if (!content.includes('```')) {
+    return <div className="whitespace-pre-wrap break-words">{content}</div>;
+  }
+
+  const parts = content.split(/(```[\s\S]*?```)/g);
+
+  return (
+    <div className="space-y-1.5">
+      {parts.map((part, index) => {
+        if (part.startsWith('```') && part.endsWith('```')) {
+          const firstLineEnd = part.indexOf('\n');
+          const lang = firstLineEnd !== -1 ? part.slice(3, firstLineEnd).trim() || 'python' : 'python';
+          const code = firstLineEnd !== -1 ? part.slice(firstLineEnd + 1, -3).trim() : part.slice(3, -3).trim();
+
+          return <CodeSnippet key={index} code={code} lang={lang} />;
+        }
+        if (!part.trim()) return null;
+        return (
+          <div key={index} className="whitespace-pre-wrap break-words">
+            {part}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function CodeSnippet({ code, lang }: { code: string; lang: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (e) {
+      console.error('Failed to copy code:', e);
+    }
+  };
+
+  return (
+    <div className="rounded-md overflow-hidden border border-flinch-border bg-flinch-deep my-2">
+      <div className="flex items-center justify-between px-2.5 py-1 bg-flinch-panel border-b border-flinch-border text-2xs text-flinch-text-muted font-mono">
+        <span>{lang}</span>
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="flex items-center gap-1 hover:text-flinch-text flinch-transition cursor-pointer"
+          title="Copy code"
+        >
+          {copied ? <Check size={12} className="text-flinch-success" /> : <Copy size={12} />}
+          <span>{copied ? 'Copied' : 'Copy'}</span>
+        </button>
+      </div>
+      <pre className="p-2.5 text-xs font-mono text-flinch-text overflow-x-auto max-h-56">
+        <code>{code}</code>
+      </pre>
+    </div>
+  );
+}
+
