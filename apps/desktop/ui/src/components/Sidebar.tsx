@@ -45,21 +45,79 @@ export function Sidebar() {
     return () => clearInterval(interval);
   }, [fetchMetrics]);
 
-  const loadSession = useCallback(async (id: string) => {
+  const loadSession = useCallback(async (id: string, fallbackPrompt?: string) => {
     try {
       const result = await invoke<AgentResult>('get_session', { sessionId: id });
-      const userPrompt = result.attempts.length > 0 ? result.attempts[0].prompt : id;
+      const userPrompt = (result.attempts.length > 0 && result.attempts[0].prompt && result.attempts[0].prompt.trim())
+        ? result.attempts[0].prompt
+        : (fallbackPrompt || 'Previous Prompt');
+
+      // Reconstruct complete conversation history with prompts and generated scripts
+      const loadedMessages: { id: string; role: 'user' | 'assistant'; content: string }[] = [];
+
+      if (result.attempts.length === 0) {
+        loadedMessages.push({
+          id: `${Date.now()}-user`,
+          role: 'user',
+          content: userPrompt,
+        });
+        loadedMessages.push({
+          id: `${Date.now()}-assistant`,
+          role: 'assistant',
+          content: result.success ? 'Script executed successfully.' : 'Script execution failed.',
+        });
+      } else {
+        result.attempts.forEach((att, idx) => {
+          if (idx === 0) {
+            loadedMessages.push({
+              id: `${Date.now()}-user-${idx}`,
+              role: 'user',
+              content: userPrompt,
+            });
+          } else {
+            const prevError = result.attempts[idx - 1]?.harness_result?.error;
+            const errorMsg = prevError ? `${(prevError as any).error_type || (prevError as any).type || 'Error'}: ${prevError.message || ''}` : 'Execution error';
+            loadedMessages.push({
+              id: `${Date.now()}-user-${idx}`,
+              role: 'user',
+              content: `Fixing execution error from attempt ${idx}:\n${errorMsg}`,
+            });
+          }
+
+          let assistantContent = '';
+          if (att.raw_response && att.raw_response.trim()) {
+            assistantContent = att.raw_response.trim();
+          } else if (att.script && att.script.trim()) {
+            assistantContent = `\`\`\`python\n${att.script.trim()}\n\`\`\``;
+          }
+
+          if (idx === result.attempts.length - 1) {
+            const statusLine = result.success
+              ? '\n\nScript executed successfully.'
+              : '\n\nScript execution failed after all attempts.';
+            assistantContent = assistantContent
+              ? `${assistantContent}${statusLine}`
+              : (result.success ? 'Script executed successfully.' : 'Script execution failed.');
+          }
+
+          loadedMessages.push({
+            id: `${Date.now()}-assistant-${idx}`,
+            role: 'assistant',
+            content: assistantContent || (result.success ? 'Script executed successfully.' : 'No code generated.'),
+          });
+        });
+      }
+
       useStore.setState({
+        prompt: userPrompt,
         finalResult: result,
         attempts: result.attempts,
         activeAttemptIndex: Math.max(0, result.attempts.length - 1),
-        messages: [
-          { id: Date.now().toString(), role: 'user', content: userPrompt },
-          { id: (Date.now() + 1).toString(), role: 'assistant', content: result.success ? 'Script executed successfully.' : 'Script execution failed after all attempts.' }
-        ],
+        messages: loadedMessages,
+        error: null,
       });
     } catch (e) {
-      console.error(e);
+      console.error('Failed to load session:', e);
     }
   }, []);
 
@@ -297,7 +355,7 @@ export function Sidebar() {
                 style={{ animationDelay: `${Math.min(i * 30, 300)}ms` }}
               >
                 <button
-                  onClick={() => loadSession(session.id)}
+                  onClick={() => loadSession(session.id, session.prompt)}
                   className="w-full text-left flinch-focus-ring pr-6"
                 >
                   <div className="flex items-center gap-2 mb-0.5">
