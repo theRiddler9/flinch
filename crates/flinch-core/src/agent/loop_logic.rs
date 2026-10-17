@@ -112,6 +112,7 @@ impl Agent {
                 let req = ChatRequest {
                     messages: messages.clone(),
                     temperature: 0.2, // low temp for coding
+                    max_tokens: None,
                 };
 
                 let stream_res = self.provider.stream_chat(req).await;
@@ -119,6 +120,7 @@ impl Agent {
                     Ok(s) => s,
                     Err(e) => {
                         stream_err = Some(e.to_string());
+                        raw_response.clear();
                         tokio::time::sleep(std::time::Duration::from_millis(500 * (retry + 1)))
                             .await;
                         continue;
@@ -136,6 +138,9 @@ impl Agent {
                         Err(e) => {
                             stream_err = Some(e.to_string());
                             chunk_err = true;
+                            raw_response.clear();
+                            // Signal token_cb to reset UI tokens before retrying
+                            token_cb("\x1b[RESET]".to_string()).await;
                             break;
                         }
                     }
@@ -144,11 +149,13 @@ impl Agent {
                 if !chunk_err && !raw_response.trim().is_empty() {
                     stream_err = None;
                     break;
+                } else if chunk_err {
+                    raw_response.clear();
                 }
                 tokio::time::sleep(std::time::Duration::from_millis(500 * (retry + 1))).await;
             }
 
-            if raw_response.trim().is_empty() {
+            if stream_err.is_some() || raw_response.trim().is_empty() {
                 let err_msg = stream_err.unwrap_or_else(|| {
                     "Provider returned empty response after retries".to_string()
                 });
@@ -222,14 +229,21 @@ impl Agent {
                         },
                         checks: vec![],
                         duration_ms: 0,
+                        rewritten_script: None,
                     }
                 }
+            };
+
+            let final_script = if let Some(ref rw) = harness_res.rewritten_script {
+                rw.clone()
+            } else {
+                script.clone()
             };
 
             attempts_record.push(AttemptRecord {
                 prompt: user_prompt.to_string(),
                 raw_response: raw_response.clone(),
-                script: script.clone(),
+                script: final_script,
                 harness_result: Some(harness_res.clone()),
             });
 
@@ -296,18 +310,6 @@ fn extract_python_code(text: &str) -> String {
         if in_block {
             script.push_str(line);
             script.push('\n');
-        }
-    }
-
-    if script.trim().is_empty() && text.contains("import bpy") {
-        if let Some(idx) = text.find("import bpy") {
-            let candidate = &text[idx..];
-            let cleaned = candidate
-                .lines()
-                .take_while(|l| !l.trim_start().starts_with("```"))
-                .collect::<Vec<_>>()
-                .join("\n");
-            return cleaned.trim().to_string();
         }
     }
 
