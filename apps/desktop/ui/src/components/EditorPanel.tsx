@@ -1,5 +1,5 @@
 import { useStore } from '../state/useStore';
-import { Editor, DiffEditor } from '@monaco-editor/react';
+import { Editor, DiffEditor, type Monaco } from '@monaco-editor/react';
 import {
   WarningCircle as AlertCircle, CheckCircle as CheckCircle2, DownloadSimple as Download, FileCode,
   CaretDown as ChevronDown, CaretRight as ChevronRight, Copy, Code as Code2, Sparkle as Sparkles,
@@ -24,10 +24,27 @@ export function EditorPanel() {
   const dragging = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  const handleEditorWillMount = (monaco: Monaco) => {
+    monaco.editor.defineTheme('cursor-dark', {
+      base: 'vs-dark',
+      inherit: true,
+      rules: [],
+      colors: {
+        'editor.background': '#09090b',
+        'editor.lineHighlightBackground': '#141418',
+        'editorLineNumber.foreground': '#40404a',
+        'editorLineNumber.activeForeground': '#a1a1aa',
+        'editorGutter.background': '#09090b',
+        'editor.selectionBackground': '#1e3a5f',
+        'editor.inactiveSelectionBackground': '#172538',
+      },
+    });
+  };
+
   const monacoTheme =
     theme === 'light' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: light)').matches)
       ? 'vs-light'
-      : 'vs-dark';
+      : 'cursor-dark';
 
   const currentAttempt  = attempts[activeAttemptIndex];
   const previousAttempt = activeAttemptIndex > 0 ? attempts[activeAttemptIndex - 1] : null;
@@ -215,13 +232,14 @@ export function EditorPanel() {
           /* FULL CODE */
           <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
             <div className="px-3 py-1 bg-flinch-panel/40 border-b border-flinch-border-dim/40 text-2xs font-mono text-flinch-text-muted flex items-center justify-between shrink-0">
-              <span>📝 Python (bpy)</span>
+              <span>Python (bpy)</span>
               <span>{currentAttempt ? `Attempt ${activeAttemptIndex + 1}` : 'Live Editor'}</span>
             </div>
             <div className="flex-1 min-h-0">
               {isDiffMode && previousAttempt ? (
                 <DiffEditor
                   language="python" theme={monacoTheme}
+                  beforeMount={handleEditorWillMount}
                   original={previousAttempt.script}
                   modified={script}
                   options={{
@@ -235,6 +253,7 @@ export function EditorPanel() {
               ) : (
                 <Editor
                   language="python" theme={monacoTheme}
+                  beforeMount={handleEditorWillMount}
                   value={script}
                   options={{
                     readOnly: false, minimap: { enabled: false }, scrollBeyondLastLine: false,
@@ -252,13 +271,14 @@ export function EditorPanel() {
           <>
             <div style={{ height: `${splitPct}%` }} className="min-h-0 overflow-hidden flex flex-col">
               <div className="px-3 py-1 bg-flinch-panel/40 border-b border-flinch-border-dim/40 text-2xs font-mono text-flinch-text-muted flex items-center justify-between shrink-0">
-                <span>📝 Python (bpy)</span>
+                <span>Python (bpy)</span>
                 <span>{currentAttempt ? `Attempt ${activeAttemptIndex + 1}` : 'Live Editor'}</span>
               </div>
               <div className="flex-1 min-h-0">
                 {isDiffMode && previousAttempt ? (
                   <DiffEditor
                     language="python" theme={monacoTheme}
+                    beforeMount={handleEditorWillMount}
                     original={previousAttempt.script}
                     modified={script}
                     options={{
@@ -272,6 +292,7 @@ export function EditorPanel() {
                 ) : (
                   <Editor
                     language="python" theme={monacoTheme}
+                    beforeMount={handleEditorWillMount}
                     value={script}
                     options={{
                       readOnly: false, minimap: { enabled: false }, scrollBeyondLastLine: false,
@@ -310,26 +331,26 @@ export function EditorPanel() {
         <div className="border-t border-flinch-error/20 bg-flinch-deep shrink-0">
           <button
             onClick={() => setErrorExpanded(!errorExpanded)}
-            className="w-full flex items-center gap-2 px-4 py-2 text-flinch-error hover:bg-flinch-error/10 flinch-transition text-base font-bold bg-[#0a0a0a] border-b border-flinch-error/20"
+            className="w-full flex items-center gap-2 px-4 py-2 text-flinch-error hover:bg-flinch-error/10 flinch-transition text-base font-bold bg-flinch-deep border-b border-flinch-error/20"
           >
             {errorExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
             <AlertCircle size={16} />
             <span className="uppercase tracking-wider font-mono">[TERMINAL] {currentAttempt.harness_result.stage} ERROR</span>
             {currentAttempt.harness_result.error && (
               <span className="ml-2 text-xs text-flinch-error/70 font-mono truncate">
-                {(currentAttempt.harness_result.error as any).error_type ?? (currentAttempt.harness_result.error as any).type}
+                {currentAttempt.harness_result.error.type}
               </span>
             )}
           </button>
           {errorExpanded && (
-            <div className="max-h-64 overflow-y-auto px-4 pb-4 flinch-slide-in space-y-3 bg-[#0d0d0d] border-t border-flinch-border-dim">
+            <div className="max-h-64 overflow-y-auto px-4 pb-4 flinch-slide-in space-y-3 bg-flinch-base border-t border-flinch-border-dim">
               {currentAttempt.harness_result.error && (
                 <div className="font-mono text-sm leading-relaxed mt-2">
                   <div className="text-flinch-error font-bold mb-2 text-base uppercase border-l-4 border-flinch-error pl-2">
-                    {(currentAttempt.harness_result.error as any).error_type ?? (currentAttempt.harness_result.error as any).type}: {currentAttempt.harness_result.error.message}
+                    {currentAttempt.harness_result.error.type}: {currentAttempt.harness_result.error.message}
                   </div>
                   {currentAttempt.harness_result.error.traceback && (
-                    <pre className="text-gray-300 whitespace-pre-wrap text-xs leading-relaxed bg-[#1e1e1e] p-3 rounded-md border border-gray-800">
+                    <pre className="text-flinch-text-dim whitespace-pre-wrap text-xs leading-relaxed bg-flinch-deep p-3 rounded-md border border-flinch-border">
                       {currentAttempt.harness_result.error.traceback}
                     </pre>
                   )}

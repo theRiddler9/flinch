@@ -74,6 +74,7 @@ interface RunState {
   updateQueue: (id: string, patch: Partial<QueueEntry>) => void;
   setPrompt: (prompt: string) => void;
   appendToken: (token: string) => void;
+  resetCurrentAssistantMessage: () => void;
   addMessage: (role: 'user' | 'assistant', content: string) => void;
   startRun: (prompt: string) => Promise<void>;
   cancelRun: () => Promise<void>;
@@ -141,6 +142,17 @@ export const useStore = create<RunState>()(
         });
       },
 
+      resetCurrentAssistantMessage: () => {
+        set((state) => {
+          const messages = [...state.messages];
+          const last = messages[messages.length - 1];
+          if (last && last.role === 'assistant') {
+            messages.pop();
+          }
+          return { messages };
+        });
+      },
+
       addMessage: (role, content) => {
         set((state) => ({
           messages: [...state.messages, { id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, role, content }],
@@ -175,7 +187,7 @@ export const useStore = create<RunState>()(
             isRunning: false,
             activeAttemptIndex: Math.max(0, result.attempts.length - 1),
           });
-          addMessage('assistant', result.success ? '✨ Script executed successfully!' : '❌ Script failed after all attempts.');
+          addMessage('assistant', result.success ? 'Script executed successfully.' : 'Script execution failed after all attempts.');
           updateQueue(queueId, { status: result.success ? 'done' : 'error' });
           await loadHistory();
         } catch (e: unknown) {

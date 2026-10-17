@@ -52,7 +52,18 @@ function App() {
     };
 
     const unlistenToken = listen<{ message: string }>('agent://token', (event) => {
-      tokenBuffer += event.payload.message;
+      const msg = event.payload.message;
+      if (msg.includes('\x1b[RESET]')) {
+        tokenBuffer = '';
+        useStore.getState().resetCurrentAssistantMessage();
+        const cleaned = msg.split('\x1b[RESET]').join('');
+        if (cleaned) {
+          tokenBuffer += cleaned;
+          scheduleFlush();
+        }
+        return;
+      }
+      tokenBuffer += msg;
       scheduleFlush();
     });
 

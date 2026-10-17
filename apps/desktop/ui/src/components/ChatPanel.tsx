@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, type FormEvent } from 'react';
 import { useStore } from '../state/useStore';
-import { PaperPlaneRight as Send, Stop as Square, TerminalWindow as Terminal, SpinnerGap as Loader2, User, Robot, Sparkle as Sparkles } from '@phosphor-icons/react';
+import { PaperPlaneRight as Send, Stop as Square, TerminalWindow as Terminal, SpinnerGap as Loader2, User, Code, Copy, Check } from '@phosphor-icons/react';
 import { cn } from '../lib/utils';
 
 export function ChatPanel() {
@@ -57,8 +57,8 @@ export function ChatPanel() {
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3">
                 {messages.length === 0 && !isRunning && (
           <div className="flex flex-col items-center justify-center h-full text-center">
-            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-flinch-accent/20 to-blue-500/10 flex items-center justify-center mb-4 border border-flinch-accent/20 shadow-[0_0_20px_rgba(59,130,246,0.1)]">
-              <Sparkles size={28} className="text-flinch-accent" weight="duotone" />
+            <div className="w-14 h-14 rounded-2xl bg-flinch-surface/80 flex items-center justify-center mb-4 border border-flinch-border shadow-sm">
+              <Code size={24} className="text-flinch-accent" weight="bold" />
             </div>
             <div className="text-flinch-text text-base font-semibold mb-2">
               What should we build?
@@ -70,7 +70,7 @@ export function ChatPanel() {
           </div>
         )}
         {messages.map((msg, i) => (
-                    <div
+          <div
             key={msg.id}
             className={cn(
               "flinch-slide-in rounded-xl text-[13px] leading-relaxed shadow-sm flex flex-col",
@@ -84,11 +84,11 @@ export function ChatPanel() {
               {msg.role === 'user' ? (
                  <div className="w-5 h-5 rounded flex items-center justify-center bg-white/10 text-flinch-text-muted"><User size={12} weight="fill" /></div>
               ) : (
-                 <div className="w-5 h-5 rounded flex items-center justify-center bg-flinch-accent/20 text-flinch-accent"><Robot size={12} weight="fill" /></div>
+                 <div className="w-5 h-5 rounded flex items-center justify-center bg-flinch-accent/15 text-flinch-accent"><Code size={12} weight="bold" /></div>
               )}
-              <span className="text-[10px] uppercase tracking-wider font-bold opacity-50">{msg.role === 'user' ? 'You' : 'Flinch AI'}</span>
+              <span className="text-[10px] uppercase tracking-wider font-bold opacity-50">{msg.role === 'user' ? 'You' : 'Flinch'}</span>
             </div>
-            <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+            <ChatMessageContent content={msg.content} />
           </div>
         ))}
 
@@ -165,3 +165,66 @@ export function ChatPanel() {
     </div>
   );
 }
+
+function ChatMessageContent({ content }: { content: string }) {
+  if (!content.includes('```')) {
+    return <div className="whitespace-pre-wrap break-words">{content}</div>;
+  }
+
+  const parts = content.split(/(```[\s\S]*?```)/g);
+
+  return (
+    <div className="space-y-1.5">
+      {parts.map((part, index) => {
+        if (part.startsWith('```') && part.endsWith('```')) {
+          const firstLineEnd = part.indexOf('\n');
+          const lang = firstLineEnd !== -1 ? part.slice(3, firstLineEnd).trim() || 'python' : 'python';
+          const code = firstLineEnd !== -1 ? part.slice(firstLineEnd + 1, -3).trim() : part.slice(3, -3).trim();
+
+          return <CodeSnippet key={index} code={code} lang={lang} />;
+        }
+        if (!part.trim()) return null;
+        return (
+          <div key={index} className="whitespace-pre-wrap break-words">
+            {part}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function CodeSnippet({ code, lang }: { code: string; lang: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (e) {
+      console.error('Failed to copy code:', e);
+    }
+  };
+
+  return (
+    <div className="rounded-md overflow-hidden border border-flinch-border bg-flinch-deep my-2">
+      <div className="flex items-center justify-between px-2.5 py-1 bg-flinch-panel border-b border-flinch-border text-2xs text-flinch-text-muted font-mono">
+        <span>{lang}</span>
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="flex items-center gap-1 hover:text-flinch-text flinch-transition cursor-pointer"
+          title="Copy code"
+        >
+          {copied ? <Check size={12} className="text-flinch-success" /> : <Copy size={12} />}
+          <span>{copied ? 'Copied' : 'Copy'}</span>
+        </button>
+      </div>
+      <pre className="p-2.5 text-xs font-mono text-flinch-text overflow-x-auto max-h-56">
+        <code>{code}</code>
+      </pre>
+    </div>
+  );
+}
+

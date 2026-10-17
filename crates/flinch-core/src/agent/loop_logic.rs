@@ -49,6 +49,33 @@ impl Agent {
         &self,
         user_prompt: &str,
         spec: Option<&str>,
+        log_cb: F,
+        token_cb: T,
+    ) -> Result<AgentResult>
+    where
+        F: FnMut(String) -> Fut1,
+        Fut1: std::future::Future<Output = ()> + Send,
+        T: FnMut(String) -> Fut2,
+        Fut2: std::future::Future<Output = ()> + Send,
+    {
+        self.run_task_with_prompts(
+            user_prompt,
+            spec,
+            &self.config.system_prompt,
+            &self.config.feedback_prompt_template,
+            log_cb,
+            token_cb,
+        )
+        .await
+    }
+
+    /// Run with caller-supplied prompts (hot-reload support — reads fresh from disk each call).
+    pub async fn run_task_with_prompts<F, Fut1, T, Fut2>(
+        &self,
+        user_prompt: &str,
+        spec: Option<&str>,
+        system_prompt: &str,
+        feedback_prompt_template: &str,
         mut log_cb: F,
         mut token_cb: T,
     ) -> Result<AgentResult>
@@ -61,7 +88,7 @@ impl Agent {
         let mut messages = vec![
             ChatMessage {
                 role: "system".to_string(),
-                content: self.config.system_prompt.clone(),
+                content: system_prompt.to_string(),
             },
             ChatMessage {
                 role: "user".to_string(),
@@ -78,35 +105,72 @@ impl Agent {
             ))
             .await;
 
-            let req = ChatRequest {
-                messages: messages.clone(),
-                temperature: 0.2, // low temp for coding
-            };
-
-            let mut stream = self.provider.stream_chat(req).await?;
             let mut raw_response = String::new();
+            let mut stream_err = None;
 
-            while let Some(chunk_res) = stream.next().await {
-                match chunk_res {
-                    Ok(chunk) => {
-                        raw_response.push_str(&chunk.content);
-                        token_cb(chunk.content).await;
-                    }
+            for retry in 0..3 {
+                let req = ChatRequest {
+                    messages: messages.clone(),
+                    temperature: 0.2, // low temp for coding
+                    max_tokens: None,
+                };
+
+                let stream_res = self.provider.stream_chat(req).await;
+                let mut stream = match stream_res {
+                    Ok(s) => s,
                     Err(e) => {
-                        let err_msg = format!("Network or provider error: {}", e);
-                        attempts_record.push(AttemptRecord {
-                            prompt: user_prompt.to_string(),
-                            raw_response: raw_response.clone(),
-                            script: "".to_string(),
-                            harness_result: None,
-                        });
-                        messages.push(ChatMessage {
-                            role: "user".to_string(),
-                            content: err_msg,
-                        });
-                        continue 'attempt_loop;
+                        stream_err = Some(e.to_string());
+                        raw_response.clear();
+                        tokio::time::sleep(std::time::Duration::from_millis(500 * (retry + 1)))
+                            .await;
+                        continue;
+                    }
+                };
+
+                raw_response.clear();
+                let mut chunk_err = false;
+                while let Some(chunk_res) = stream.next().await {
+                    match chunk_res {
+                        Ok(chunk) => {
+                            raw_response.push_str(&chunk.content);
+                            token_cb(chunk.content).await;
+                        }
+                        Err(e) => {
+                            stream_err = Some(e.to_string());
+                            chunk_err = true;
+                            raw_response.clear();
+                            // Signal token_cb to reset UI tokens before retrying
+                            token_cb("\x1b[RESET]".to_string()).await;
+                            break;
+                        }
                     }
                 }
+
+                if !chunk_err && !raw_response.trim().is_empty() {
+                    stream_err = None;
+                    break;
+                } else if chunk_err {
+                    raw_response.clear();
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(500 * (retry + 1))).await;
+            }
+
+            if stream_err.is_some() || raw_response.trim().is_empty() {
+                let err_msg = stream_err.unwrap_or_else(|| {
+                    "Provider returned empty response after retries".to_string()
+                });
+                let full_err = format!("Network or provider error: {}", err_msg);
+                attempts_record.push(AttemptRecord {
+                    prompt: user_prompt.to_string(),
+                    raw_response: raw_response.clone(),
+                    script: "".to_string(),
+                    harness_result: None,
+                });
+                messages.push(ChatMessage {
+                    role: "user".to_string(),
+                    content: full_err,
+                });
+                continue 'attempt_loop;
             }
 
             messages.push(ChatMessage {
@@ -165,14 +229,21 @@ impl Agent {
                         },
                         checks: vec![],
                         duration_ms: 0,
+                        rewritten_script: None,
                     }
                 }
+            };
+
+            let final_script = if let Some(ref rw) = harness_res.rewritten_script {
+                rw.clone()
+            } else {
+                script.clone()
             };
 
             attempts_record.push(AttemptRecord {
                 prompt: user_prompt.to_string(),
                 raw_response: raw_response.clone(),
-                script: script.clone(),
+                script: final_script,
                 harness_result: Some(harness_res.clone()),
             });
 
@@ -200,9 +271,7 @@ impl Agent {
                     }
                 };
 
-                let feedback = self
-                    .config
-                    .feedback_prompt_template
+                let feedback = feedback_prompt_template
                     .replace("{stage}", &harness_res.stage)
                     .replace("{error}", &trunc(&error_detail, 2000))
                     .replace("{stdout}", &trunc(&harness_res.stdout, 1500))
@@ -227,10 +296,14 @@ fn extract_python_code(text: &str) -> String {
     let mut in_block = false;
 
     for line in text.lines() {
-        if line.starts_with("```python") || line.starts_with("``` python") {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("```python")
+            || trimmed.starts_with("``` python")
+            || trimmed.starts_with("```py")
+        {
             in_block = true;
             continue;
-        } else if line.starts_with("```") && in_block {
+        } else if trimmed.starts_with("```") && in_block {
             break;
         }
 

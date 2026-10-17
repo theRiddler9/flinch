@@ -180,6 +180,7 @@ impl Runner {
                     },
                     checks: vec![],
                     duration_ms: (self.config.timeout_sec * 1000) as u32,
+                    rewritten_script: None,
                 });
             }
         }

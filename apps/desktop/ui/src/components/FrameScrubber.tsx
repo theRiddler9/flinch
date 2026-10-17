@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import {
   Play, Pause, SkipBack, SkipForward,
   WarningCircle as AlertCircle, SpinnerGap as Loader2, Sparkle as Sparkles, ArrowsClockwise as RefreshCw,
+  ArrowSquareOut, Cube as Box,
 } from '@phosphor-icons/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { cn } from '../lib/utils';
@@ -26,12 +27,28 @@ export function FrameScrubber({ script, frameRange }: FrameScrubberProps) {
   const [bakingText, setBakingText] = useState('');
   const [previewSrc, setPreviewSrc] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [blenderLaunchError, setBlenderLaunchError] = useState<string | null>(null);
   const [cachedFramesCount, setCachedFramesCount] = useState(0);
+  const [openingInBlender, setOpeningInBlender] = useState(false);
 
   // In-memory frame cache: frame number -> base64 data URI
   const frameCacheRef = useRef<Map<number, string>>(new Map());
   const isRenderingRef = useRef(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleOpenInBlender = useCallback(async () => {
+    if (!script) return;
+    setOpeningInBlender(true);
+    setBlenderLaunchError(null);
+    try {
+      await invoke('open_in_blender', { script });
+    } catch (e: unknown) {
+      console.error("Failed to open in Blender:", e);
+      setBlenderLaunchError(String(e));
+    } finally {
+      setTimeout(() => setOpeningInBlender(false), 2000);
+    }
+  }, [script]);
 
   const isFailedRun = finalResult && finalResult.success === false;
   const canRender = Boolean(script && script.includes('import bpy') && !isRunning && !isFailedRun);
@@ -66,7 +83,7 @@ export function FrameScrubber({ script, frameRange }: FrameScrubberProps) {
         setCachedFramesCount(frameCacheRef.current.size);
         setPreviewSrc(b64DataUri);
         return true;
-      } catch (e: any) {
+      } catch (e: unknown) {
         setError(String(e));
         return false;
       } finally {
@@ -102,7 +119,7 @@ export function FrameScrubber({ script, frameRange }: FrameScrubberProps) {
       const current = frameCacheRef.current.get(frame) || frameCacheRef.current.get(startFrame);
       if (current) setPreviewSrc(current);
       return true;
-    } catch (e: any) {
+    } catch (e: unknown) {
       setError(String(e));
       return false;
     } finally {
@@ -189,12 +206,23 @@ export function FrameScrubber({ script, frameRange }: FrameScrubberProps) {
       {/* Viewport Header */}
       <div className="px-3 py-1 bg-flinch-panel/40 border-b border-flinch-border-dim/40 text-2xs font-mono text-flinch-text-muted flex items-center justify-between shrink-0">
         <div className="flex items-center gap-1.5">
-          <span>🎬 Live Viewport Canvas</span>
+          <span>Live Viewport Canvas</span>
           {canRender && (
             <span className="w-1.5 h-1.5 rounded-full bg-flinch-success inline-block" />
           )}
         </div>
         <div className="flex items-center gap-2">
+          {script && (
+            <button
+              onClick={handleOpenInBlender}
+              disabled={isRunning || openingInBlender}
+              className="text-flinch-text-muted hover:text-flinch-text flinch-transition flex items-center gap-1 bg-flinch-surface/60 px-2 py-0.5 rounded border border-flinch-border/50 text-2xs hover:border-flinch-accent/50"
+              title="Launch and open the generated model directly in Blender"
+            >
+              <ArrowSquareOut size={11} className={openingInBlender ? "animate-pulse text-flinch-accent" : "text-flinch-accent"} />
+              <span>{openingInBlender ? 'Opening...' : 'Open in Blender'}</span>
+            </button>
+          )}
           {canRender && (
             <>
               <button
@@ -226,6 +254,13 @@ export function FrameScrubber({ script, frameRange }: FrameScrubberProps) {
           </span>
         </div>
       </div>
+
+      {blenderLaunchError && (
+        <div className="px-3 py-1 bg-flinch-error/15 border-b border-flinch-error/30 text-2xs text-flinch-error font-mono flex items-center justify-between shrink-0">
+          <span className="truncate">Blender launch error: {blenderLaunchError}</span>
+          <button onClick={() => setBlenderLaunchError(null)} className="ml-2 text-flinch-text-muted hover:text-flinch-text">✕</button>
+        </div>
+      )}
 
       {/* Preview canvas */}
       <div className="flex-1 flex items-center justify-center bg-black/30 relative overflow-hidden min-h-0">
@@ -266,7 +301,7 @@ export function FrameScrubber({ script, frameRange }: FrameScrubberProps) {
           />
         ) : !loading && !baking && !error ? (
           <div className="text-center p-6 text-flinch-text-muted">
-            <div className="text-4xl mb-3 opacity-30">🧊</div>
+            <Box size={36} weight="light" className="mx-auto mb-3 opacity-30 text-flinch-text-muted" />
             <div className="text-sm font-medium text-flinch-text-dim mb-1">
               {isRunning ? "Generating Script..." : isFailedRun ? "Script Execution Failed" : "Live Viewport Ready"}
             </div>

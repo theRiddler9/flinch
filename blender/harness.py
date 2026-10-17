@@ -29,6 +29,137 @@ DEFAULT_BASE_COLOR = (0.8, 0.8, 0.8, 1.0)
 
 
 # --------------------------------------------------------------------------------------
+# AST Compatibility Rewriter (Blender 4.0+/5.2)
+# --------------------------------------------------------------------------------------
+
+SOCKET_HELPERS_CODE = '''
+def _flinch_socket(inputs, name):
+    if hasattr(inputs, "__getitem__"):
+        try:
+            return inputs[name]
+        except (KeyError, IndexError):
+            pass
+    _aliases = {
+        "Specular": "Specular IOR Level",
+        "Transmission": "Transmission Weight",
+        "Subsurface": "Subsurface Weight",
+        "Subsurface Color": "Base Color",
+        "Clearcoat": "Coat Weight",
+        "Clearcoat Roughness": "Coat Roughness",
+        "Coat": "Coat Weight",
+        "Sheen": "Sheen Weight",
+        "Emission": "Emission Color",
+    }
+    if name in _aliases and hasattr(inputs, "__getitem__"):
+        try:
+            return inputs[_aliases[name]]
+        except (KeyError, IndexError):
+            pass
+    return inputs[name]
+
+def _flinch_socket_get(inputs, name, default=None):
+    if hasattr(inputs, "get"):
+        val = inputs.get(name)
+        if val is not None:
+            return val
+    _aliases = {
+        "Specular": "Specular IOR Level",
+        "Transmission": "Transmission Weight",
+        "Subsurface": "Subsurface Weight",
+        "Subsurface Color": "Base Color",
+        "Clearcoat": "Coat Weight",
+        "Clearcoat Roughness": "Coat Roughness",
+        "Coat": "Coat Weight",
+        "Sheen": "Sheen Weight",
+        "Emission": "Emission Color",
+    }
+    if name in _aliases and hasattr(inputs, "get"):
+        val = inputs.get(_aliases[name])
+        if val is not None:
+            return val
+    return default
+'''
+
+
+class BlenderCompatRewriter(ast.NodeTransformer):
+    """Rewrites legacy/deprecated Blender 2.8x-3.6x APIs into Blender 4.0+/5.2 compatible equivalents.
+    Prevents common LLM hallucinations and breaking API changes from crashing scripts."""
+
+    SOCKET_MAP = {
+        "Specular": "Specular IOR Level",
+        "Transmission": "Transmission Weight",
+        "Subsurface": "Subsurface Weight",
+        "Subsurface Color": "Base Color",
+        "Clearcoat": "Coat Weight",
+        "Clearcoat Roughness": "Coat Roughness",
+        "Coat": "Coat Weight",
+        "Sheen": "Sheen Weight",
+        "Emission": "Emission Color",
+    }
+
+    def __init__(self):
+        super().__init__()
+        self.used_socket_helper = False
+
+    def visit_Subscript(self, node):
+        self.generic_visit(node)
+        # Safely wrap node.inputs['Specular'] with fallback helper instead of unconditionally renaming
+        if isinstance(node.value, ast.Attribute) and node.value.attr == "inputs":
+            if isinstance(node.slice, ast.Constant) and isinstance(node.slice.value, str):
+                if node.slice.value in self.SOCKET_MAP:
+                    self.used_socket_helper = True
+                    return ast.Call(
+                        func=ast.Name(id="_flinch_socket", ctx=ast.Load()),
+                        args=[node.value, node.slice],
+                        keywords=[],
+                    )
+        return node
+
+    def visit_Call(self, node):
+        self.generic_visit(node)
+        # 1. Safely wrap node.inputs.get('Specular', ...)
+        if isinstance(node.func, ast.Attribute) and node.func.attr == "get":
+            if isinstance(node.func.value, ast.Attribute) and node.func.value.attr == "inputs":
+                if node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
+                    if node.args[0].value in self.SOCKET_MAP:
+                        self.used_socket_helper = True
+                        default_arg = node.args[1] if len(node.args) > 1 else ast.Constant(value=None)
+                        return ast.Call(
+                            func=ast.Name(id="_flinch_socket_get", ctx=ast.Load()),
+                            args=[node.func.value, node.args[0], default_arg],
+                            keywords=[],
+                        )
+
+        # 2. Rewrite bpy.ops.object.mode_set(mode='END'/'DEFAULT') -> mode='OBJECT'
+        if isinstance(node.func, ast.Attribute) and node.func.attr == "mode_set":
+            for kw in node.keywords:
+                if kw.arg == "mode" and isinstance(kw.value, ast.Constant) and kw.value.value in ("END", "DEFAULT"):
+                    kw.value.value = "OBJECT"
+            if node.args and isinstance(node.args[0], ast.Constant) and node.args[0].value in ("END", "DEFAULT"):
+                node.args[0].value = "OBJECT"
+
+        # 3. Rewrite bpy.ops.mesh.primitive_torus_add(segments=...) -> major_segments
+        if isinstance(node.func, ast.Attribute) and node.func.attr == "primitive_torus_add":
+            for kw in node.keywords:
+                if kw.arg == "segments":
+                    kw.arg = "major_segments"
+
+        return node
+
+    def visit_Attribute(self, node):
+        self.generic_visit(node)
+        # 1. Rewrite modifier.subdivisions -> modifier.levels
+        if node.attr in ("subdivisions", "subdivision_levels"):
+            node.attr = "levels"
+
+        # 2. Rewrite mat.grease_pencil.stroke_color -> mat.grease_pencil.color
+        if node.attr == "stroke_color" and isinstance(node.value, ast.Attribute) and node.value.attr == "grease_pencil":
+            node.attr = "color"
+
+        return node
+
+
+# --------------------------------------------------------------------------------------
 # Scene statistics
 # --------------------------------------------------------------------------------------
 
@@ -496,6 +627,7 @@ def main():
         "checks": [],
         "render": None,
         "duration_ms": 0,
+        "rewritten_script": None,
     }
 
     parser = argparse.ArgumentParser()
@@ -534,9 +666,28 @@ def main():
         with open(args.script, "r") as f:
             code = f.read()
 
-        # 1. Syntax check
+        # 1. Syntax check & compatibility transformation
         try:
-            ast.parse(code)
+            tree = ast.parse(code)
+            try:
+                rewriter = BlenderCompatRewriter()
+                tree = rewriter.visit(tree)
+                if rewriter.used_socket_helper:
+                    helper_tree = ast.parse(SOCKET_HELPERS_CODE)
+                    tree.body = helper_tree.body + tree.body
+                ast.fix_missing_locations(tree)
+                unparsed = ast.unparse(tree)
+                if unparsed != code:
+                    result["rewritten_script"] = unparsed
+                    try:
+                        with open(args.script, "w") as f:
+                            f.write(unparsed)
+                    except Exception:
+                        pass
+                compiled_code = compile(tree, "<generated>", "exec")
+            except Exception as rewrite_err:
+                result["warnings"].append(f"Compatibility transformation skipped: {rewrite_err}")
+                compiled_code = compile(code, "<generated>", "exec")
         except SyntaxError as e:
             result["stage"] = "syntax"
             result["error"] = {"type": "SyntaxError", "message": str(e),
@@ -551,9 +702,12 @@ def main():
                 result["warnings"].append(f"Use of {word} is discouraged.")
 
         buf = io.StringIO()
+        exec_globals = {
+            "__name__": "__main__",
+        }
         try:
             with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
-                exec(compile(code, "<generated>", "exec"), {"__name__": "__main__"})
+                exec(compiled_code, exec_globals)
         except Exception as e:
             line_no = 0
             for frame in traceback.extract_tb(sys.exc_info()[2]):

@@ -91,8 +91,9 @@ impl Store {
     pub fn get_session(&self, session_id: &str) -> SqlResult<AgentResult> {
         let mut stmt = self
             .conn
-            .prepare("SELECT success FROM sessions WHERE id = ?1")?;
-        let success: bool = stmt.query_row([session_id], |row| row.get(0))?;
+            .prepare("SELECT success, prompt FROM sessions WHERE id = ?1")?;
+        let (success, session_prompt): (bool, String) =
+            stmt.query_row([session_id], |row| Ok((row.get(0)?, row.get(1)?)))?;
 
         let mut stmt = self.conn.prepare(
             "SELECT script, raw_response, harness_result FROM attempts WHERE session_id = ?1 ORDER BY attempt_number ASC",
@@ -103,7 +104,7 @@ impl Store {
             let hr_str: Option<String> = row.get(2)?;
             let harness_result = hr_str.and_then(|s| serde_json::from_str(&s).ok());
             Ok(AttemptRecord {
-                prompt: String::new(),
+                prompt: session_prompt.clone(),
                 raw_response,
                 script,
                 harness_result,
@@ -124,5 +125,41 @@ impl Store {
         tx.execute("DELETE FROM sessions WHERE id = ?1", [session_id])?;
         tx.commit()?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_save_and_get_session() {
+        let store = Store::new(":memory:").expect("Failed to create in-memory store");
+        let result = AgentResult {
+            success: true,
+            attempts: vec![AttemptRecord {
+                prompt: "A rotating gold cylinder".to_string(),
+                raw_response: "```python\nimport bpy\n```".to_string(),
+                script: "import bpy\n".to_string(),
+                harness_result: None,
+            }],
+        };
+
+        let session_id = store
+            .save_session("A rotating gold cylinder", &result)
+            .expect("Failed to save session");
+
+        let loaded = store
+            .get_session(&session_id)
+            .expect("Failed to get session");
+
+        assert!(loaded.success);
+        assert_eq!(loaded.attempts.len(), 1);
+        assert_eq!(loaded.attempts[0].prompt, "A rotating gold cylinder");
+        assert_eq!(loaded.attempts[0].script, "import bpy\n");
+        assert_eq!(
+            loaded.attempts[0].raw_response,
+            "```python\nimport bpy\n```"
+        );
     }
 }

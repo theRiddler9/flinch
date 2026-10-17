@@ -6,3 +6,5 @@ node_modules/
 evals/results/
 
 m2_diff.patch
+__pycache__/
+*.pyc
