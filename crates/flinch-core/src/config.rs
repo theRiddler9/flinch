@@ -20,6 +20,8 @@ pub struct ProviderConfig {
     pub api_key_env: String,
     #[serde(default = "default_concurrency")]
     pub max_concurrency: usize,
+    #[serde(default)]
+    pub max_tokens: Option<u32>,
 }
 
 impl ProviderConfig {
@@ -81,6 +83,7 @@ mod tests {
             api_key: Some("nvapi-test-key".to_string()),
             api_key_env: "".to_string(),
             max_concurrency: 1,
+            max_tokens: None,
         };
         assert_eq!(cfg.resolve_api_key(), "nvapi-test-key");
     }
@@ -95,6 +98,7 @@ mod tests {
             api_key: None,
             api_key_env: "TEST_NIM_KEY".to_string(),
             max_concurrency: 1,
+            max_tokens: None,
         };
         assert_eq!(cfg.resolve_api_key(), "nvapi-from-env");
         std::env::remove_var("TEST_NIM_KEY");
@@ -109,6 +113,7 @@ mod tests {
             api_key: Some("  ".to_string()),
             api_key_env: "".to_string(),
             max_concurrency: 1,
+            max_tokens: None,
         };
         // If neither direct key nor env var exists, returns empty string or fallback
         assert_eq!(cfg.resolve_api_key(), "");

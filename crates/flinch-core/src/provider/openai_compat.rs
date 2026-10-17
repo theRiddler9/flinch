@@ -12,6 +12,7 @@ pub struct OpenAiCompatProvider {
     pub base_url: String,
     pub model: String,
     pub api_key: String,
+    pub max_tokens: Option<u32>,
     pub client: Client,
 }
 
@@ -21,11 +22,17 @@ impl OpenAiCompatProvider {
             base_url,
             model,
             api_key,
+            max_tokens: None,
             client: Client::builder()
                 .timeout(Duration::from_secs(120))
                 .build()
                 .unwrap(),
         }
+    }
+
+    pub fn with_max_tokens(mut self, max_tokens: Option<u32>) -> Self {
+        self.max_tokens = max_tokens;
+        self
     }
 }
 
@@ -66,7 +73,7 @@ impl LlmProvider for OpenAiCompatProvider {
             model: &self.model,
             messages: &req.messages,
             temperature: req.temperature,
-            max_tokens: Some(8192),
+            max_tokens: req.max_tokens.or(self.max_tokens),
             stream: true,
         };
 

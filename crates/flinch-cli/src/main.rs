@@ -254,7 +254,7 @@ fn setup_agent(
     let config_str = fs::read_to_string("flinch.toml").unwrap_or_default();
     let app_config: Option<flinch_core::config::AppConfig> = toml::from_str(&config_str).ok();
 
-    let (mut base_url, mut model, api_key, blender_bin) = match app_config {
+    let (mut base_url, mut model, api_key, blender_bin, max_tokens) = match app_config {
         Some(cfg) => {
             let key = cfg.provider.resolve_api_key();
             (
@@ -262,6 +262,7 @@ fn setup_agent(
                 cfg.provider.model,
                 key,
                 cfg.blender.bin,
+                cfg.provider.max_tokens,
             )
         }
         None => {
@@ -273,6 +274,7 @@ fn setup_agent(
                 "llama3".to_string(),
                 key,
                 "blender".to_string(),
+                None,
             )
         }
     };
@@ -284,7 +286,7 @@ fn setup_agent(
         base_url = p;
     }
 
-    let provider = OpenAiCompatProvider::new(base_url, model, api_key);
+    let provider = OpenAiCompatProvider::new(base_url, model, api_key).with_max_tokens(max_tokens);
 
     let runner = Runner::new(RunnerConfig {
         blender_bin,
