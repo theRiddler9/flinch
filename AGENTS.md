@@ -1,7 +1,6 @@
 # AGENTS.md: Flinch
 
 > Instructions for AI coding agents working in this repo. Read fully before making changes.
-> (Using Claude Code? Save or symlink this file as `CLAUDE.md` too.)
 
 ## 1. What we are building
 
@@ -313,4 +312,3 @@ Settings (Blender path, provider, model, keychain), onboarding via `doctor`, pac
 2. Tests added or updated.
 3. Behavior verified by actually running it (harness, eval subset, or the app).
 4. Docs updated if behavior, commands, config, or schema changed (`docs/EVALS.md` for anything eval-related).
-5. Short summary: what changed, what was verified, what is unfinished. also do microcommits that is like after creating anything at every stage commit files and changes and ask me to allow commits and also create diff branches for diff features and tell me when to do PRs ...we need to cross atleast 100 commits and if more also then good...so start the project now..build everything as given
