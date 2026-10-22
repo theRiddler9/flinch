@@ -1,5 +1,5 @@
 use crate::error::{FlinchError, Result};
-use crate::harness::HarnessResult;
+use crate::harness::{HarnessResult, PreviewOptions};
 use command_group::AsyncCommandGroup;
 use std::process::Stdio;
 use tempfile::tempdir;
@@ -13,9 +13,12 @@ pub struct RunnerConfig {
     pub timeout_sec: u64,
 }
 
+#[derive(Default)]
 pub struct ExportOptions {
     pub save_blend: Option<String>,
     pub render_image: Option<String>,
+    /// View, shading and size for `render_image`; ignored when no image is rendered.
+    pub preview: PreviewOptions,
 }
 
 pub struct Runner {
@@ -80,6 +83,7 @@ impl Runner {
             }
             if let Some(img) = opts.render_image {
                 cmd.arg("--render-image").arg(img);
+                cmd.args(opts.preview.to_args());
             }
         }
 
