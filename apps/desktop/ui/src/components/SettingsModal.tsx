@@ -221,8 +221,8 @@ export function SettingsModal({
                   </div>
 
                   <div className="space-y-1.5 pt-4">
-                    <label className="text-sm font-medium text-flinch-text-dim">Preview Render Engine</label>
-                    <p className="text-xs text-flinch-text-muted mb-3">Choose how the live viewport renders frames. This affects the speed and quality of previews.</p>
+                    <label className="text-sm font-medium text-flinch-text-dim">Rendered shading engine</label>
+                    <p className="text-xs text-flinch-text-muted mb-3">Used when the viewport shading is set to Rendered. Solid and Wireframe always use Workbench. Workbench here falls back to EEVEE for Rendered.</p>
                     <div className="space-y-2">
                       <label className="flex items-start gap-3 cursor-pointer p-2 hover:bg-flinch-surface/40 rounded-md flinch-transition">
                         <input type="radio" name="engine" value="workbench" checked={enginePreset === 'workbench'} onChange={() => useStore.setState({ enginePreset: 'workbench' })} className="mt-1 accent-flinch-accent" />

@@ -1,7 +1,10 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { z } from 'zod';
 import type { AttemptRecord } from '../bindings/AttemptRecord';
 import type { AgentResult } from '../bindings/AgentResult';
+import type { ViewPreset } from '../bindings/ViewPreset';
+import type { ShadingMode } from '../bindings/ShadingMode';
 import { invoke } from '@tauri-apps/api/core';
 
 interface Message {
@@ -18,6 +21,14 @@ export interface SessionHistory {
 }
 
 export type EnginePreset = 'workbench' | 'eevee' | 'cycles_fast' | 'cycles_prod';
+
+/** Options sent with every preview render; mirrors `PreviewParams` in the Tauri shell. */
+export interface PreviewParams {
+  view: ViewPreset;
+  shading: ShadingMode;
+  engine: EnginePreset;
+  matcap: boolean;
+}
 
 export interface QueueEntry {
   id: string;
@@ -65,11 +76,19 @@ interface RunState {
   theme: 'system' | 'dark' | 'light';
   fontSize: number;
   enginePreset: EnginePreset;
+  viewPreset: ViewPreset;
+  shadingMode: ShadingMode;
+  matcap: boolean;
+  guideOpen: boolean;
   executionQueue: QueueEntry[];
 
   setTheme: (theme: 'system' | 'dark' | 'light') => void;
   setFontSize: (size: number) => void;
   setEnginePreset: (preset: EnginePreset) => void;
+  setViewPreset: (view: ViewPreset) => void;
+  setShadingMode: (shading: ShadingMode) => void;
+  setMatcap: (matcap: boolean) => void;
+  setGuideOpen: (open: boolean) => void;
   addToQueue: (label: string) => string; // returns id
   updateQueue: (id: string, patch: Partial<QueueEntry>) => void;
   setPrompt: (prompt: string) => void;
@@ -83,6 +102,17 @@ interface RunState {
   loadHistory: () => Promise<void>;
   fetchMetrics: () => Promise<void>;
 }
+
+const VIEW_VALUES = ['camera', 'front', 'side', 'top', 'iso'] as const satisfies readonly ViewPreset[];
+const SHADING_VALUES = ['solid', 'wireframe', 'rendered'] as const satisfies readonly ShadingMode[];
+
+/** Persisted viewport settings come from localStorage, so validate them and fall back to defaults. */
+const persistedViewportSchema = z.object({
+  viewPreset: z.enum(VIEW_VALUES).catch('camera'),
+  shadingMode: z.enum(SHADING_VALUES).catch('solid'),
+  matcap: z.boolean().catch(false),
+  guideOpen: z.boolean().catch(false),
+});
 
 export const useStore = create<RunState>()(
   persist(
@@ -104,12 +134,20 @@ export const useStore = create<RunState>()(
       theme: 'system',
       fontSize: 13,
       enginePreset: 'workbench',
+      viewPreset: 'camera',
+      shadingMode: 'solid',
+      matcap: false,
+      guideOpen: false,
       executionQueue: [],
       systemMetrics: null,
 
       setTheme: (theme) => set({ theme }),
       setFontSize: (fontSize) => set({ fontSize }),
       setEnginePreset: (enginePreset) => set({ enginePreset }),
+      setViewPreset: (viewPreset) => set({ viewPreset }),
+      setShadingMode: (shadingMode) => set({ shadingMode }),
+      setMatcap: (matcap) => set({ matcap }),
+      setGuideOpen: (guideOpen) => set({ guideOpen }),
 
       addToQueue: (label) => {
         const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -236,10 +274,18 @@ export const useStore = create<RunState>()(
     }),
     {
       name: 'flinch-storage',
+      merge: (persisted, current) => {
+        const saved = (persisted ?? {}) as Partial<RunState>;
+        return { ...current, ...saved, ...persistedViewportSchema.parse(saved) };
+      },
       partialize: (state) => ({
         theme: state.theme,
         fontSize: state.fontSize,
         enginePreset: state.enginePreset,
+        viewPreset: state.viewPreset,
+        shadingMode: state.shadingMode,
+        matcap: state.matcap,
+        guideOpen: state.guideOpen,
       }),
     }
   )

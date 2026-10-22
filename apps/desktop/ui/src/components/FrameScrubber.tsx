@@ -1,12 +1,68 @@
 import { invoke } from '@tauri-apps/api/core';
+import { save } from '@tauri-apps/plugin-dialog';
 import {
   Play, Pause, SkipBack, SkipForward,
   WarningCircle as AlertCircle, SpinnerGap as Loader2, Sparkle as Sparkles, ArrowsClockwise as RefreshCw,
-  ArrowSquareOut, Cube as Box,
+  ArrowSquareOut, Cube as Box, Camera,
 } from '@phosphor-icons/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { cn } from '../lib/utils';
-import { useStore } from '../state/useStore';
+import { useStore, type PreviewParams } from '../state/useStore';
+import type { ViewPreset } from '../bindings/ViewPreset';
+import type { ShadingMode } from '../bindings/ShadingMode';
+
+interface SegmentOption<T extends string> {
+  value: T;
+  label: string;
+  title: string;
+}
+
+const VIEW_OPTIONS: SegmentOption<ViewPreset>[] = [
+  { value: 'camera', label: 'Camera', title: 'Active camera (reframed automatically if it misses the model)' },
+  { value: 'front', label: 'Front', title: 'Front view (orthographic)' },
+  { value: 'side', label: 'Side', title: 'Side view (orthographic, from the right)' },
+  { value: 'top', label: 'Top', title: 'Top view (orthographic)' },
+  { value: 'iso', label: '3/4', title: 'Turntable / isometric 3/4 view (elevated 45\u00B0 perspective)' },
+];
+
+const SHADING_OPTIONS: SegmentOption<ShadingMode>[] = [
+  { value: 'solid', label: 'Solid', title: 'Solid / Workbench with cavity shading for clear geometric detail' },
+  { value: 'wireframe', label: 'Wireframe', title: 'Wireframe: shows the polygon edges of every mesh' },
+  { value: 'rendered', label: 'Rendered', title: 'Rendered / material preview, using the engine chosen in Settings (EEVEE by default)' },
+];
+
+function Segmented<T extends string>({
+  label, value, options, onChange,
+}: {
+  label: string;
+  value: T;
+  options: SegmentOption<T>[];
+  onChange: (value: T) => void;
+}) {
+  return (
+    <div role="radiogroup" aria-label={label} className="flex items-center gap-0.5 rounded-md border border-flinch-border-dim bg-flinch-surface/60 p-0.5">
+      {options.map((option) => {
+        const selected = option.value === value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            title={option.title}
+            onClick={() => onChange(option.value)}
+            className={cn(
+              'rounded px-2 py-1 text-2xs font-medium flinch-transition flinch-focus-ring',
+              selected ? 'bg-flinch-accent text-white' : 'text-flinch-text-muted hover:text-flinch-text',
+            )}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 interface FrameScrubberProps {
   script: string;
@@ -30,6 +86,30 @@ export function FrameScrubber({ script, frameRange }: FrameScrubberProps) {
   const [blenderLaunchError, setBlenderLaunchError] = useState<string | null>(null);
   const [cachedFramesCount, setCachedFramesCount] = useState(0);
   const [openingInBlender, setOpeningInBlender] = useState(false);
+  const [snapshotting, setSnapshotting] = useState(false);
+  const [snapshotNotice, setSnapshotNotice] = useState<string | null>(null);
+  const [snapshotError, setSnapshotError] = useState<string | null>(null);
+
+  const viewPreset = useStore((state) => state.viewPreset);
+  const shadingMode = useStore((state) => state.shadingMode);
+  const matcap = useStore((state) => state.matcap);
+  const enginePreset = useStore((state) => state.enginePreset);
+  const setViewPreset = useStore((state) => state.setViewPreset);
+  const setShadingMode = useStore((state) => state.setShadingMode);
+  const setMatcap = useStore((state) => state.setMatcap);
+
+  // Options for the next render, kept in refs so in-flight renders can tell when they went stale.
+  const paramsRef = useRef<PreviewParams>({ view: viewPreset, shading: shadingMode, engine: enginePreset, matcap });
+  paramsRef.current = { view: viewPreset, shading: shadingMode, engine: enginePreset, matcap };
+  // Only settings that change the picture count: MatCap only affects Solid, the engine only Rendered.
+  const viewKey = [viewPreset, shadingMode, shadingMode === 'solid' ? String(matcap) : '', shadingMode === 'rendered' ? enginePreset : ''].join('|');
+  const viewKeyRef = useRef(viewKey);
+  viewKeyRef.current = viewKey;
+  const prevViewKeyRef = useRef(viewKey);
+  const frameRef = useRef(frame);
+  frameRef.current = frame;
+  const rerenderPendingRef = useRef(false);
+  const renderFrameRef = useRef<((f: number, silent?: boolean) => Promise<boolean>) | null>(null);
 
   // In-memory frame cache: frame number -> base64 data URI
   const frameCacheRef = useRef<Map<number, string>>(new Map());
@@ -58,41 +138,49 @@ export function FrameScrubber({ script, frameRange }: FrameScrubberProps) {
     async (f: number, silent = false): Promise<boolean> => {
       if (!script || !script.includes('import bpy')) return false;
 
-      // Check cache first - instant preview
       const cached = frameCacheRef.current.get(f);
       if (cached) {
         setPreviewSrc(cached);
         return true;
       }
 
-      if (isRenderingRef.current) return false;
+      if (isRenderingRef.current) {
+        rerenderPendingRef.current = true; // render the latest frame and options once this one finishes
+        return false;
+      }
       isRenderingRef.current = true;
+      const key = viewKeyRef.current;
 
       if (!silent) setLoading(true);
       setError(null);
 
       try {
-        const engine = useStore.getState().enginePreset;
         const b64DataUri = await invoke<string>('render_frame', {
           script,
           frame: f,
           outPath: null,
-          engine,
+          preview: paramsRef.current,
         });
+        if (key !== viewKeyRef.current) return false; // view or shading changed meanwhile: drop the stale image
         frameCacheRef.current.set(f, b64DataUri);
         setCachedFramesCount(frameCacheRef.current.size);
         setPreviewSrc(b64DataUri);
         return true;
       } catch (e: unknown) {
-        setError(String(e));
+        if (key === viewKeyRef.current) setError(String(e));
         return false;
       } finally {
         isRenderingRef.current = false;
         if (!silent) setLoading(false);
+        if (rerenderPendingRef.current) {
+          rerenderPendingRef.current = false;
+          void renderFrameRef.current?.(frameRef.current, silent);
+        }
       }
     },
     [script]
   );
+  renderFrameRef.current = renderFrame;
 
   // Batch-bake all frames in one single Blender invocation (~30ms/frame)
   const bakeAnimation = useCallback(async (): Promise<boolean> => {
@@ -101,14 +189,15 @@ export function FrameScrubber({ script, frameRange }: FrameScrubberProps) {
     setBakingText(`Baking frames ${startFrame} to ${endFrame} for smooth playback...`);
     setError(null);
 
+    const key = viewKeyRef.current;
     try {
-      const engine = useStore.getState().enginePreset;
       const frames = await invoke<Record<string, string>>('render_sequence', {
         script,
         startFrame,
         endFrame,
-        engine,
+        preview: paramsRef.current,
       });
+      if (key !== viewKeyRef.current) return false; // view or shading changed while baking
 
       for (const [fStr, dataUri] of Object.entries(frames)) {
         frameCacheRef.current.set(Number(fStr), dataUri);
@@ -188,6 +277,40 @@ export function FrameScrubber({ script, frameRange }: FrameScrubberProps) {
     };
   }, [frame, renderFrame, canRender, playing]);
 
+  // New viewpoint or shading: cached frames show the old look, so drop them and redraw the current frame.
+  useEffect(() => {
+    if (prevViewKeyRef.current === viewKey) return;
+    prevViewKeyRef.current = viewKey;
+    frameCacheRef.current.clear();
+    setCachedFramesCount(0);
+    setPlaying(false);
+    setError(null);
+    if (canRender) void renderFrame(frameRef.current);
+  }, [viewKey, canRender, renderFrame]);
+
+  // High-resolution single frame, written wherever the user picks in the OS save dialog.
+  const handleSnapshot = useCallback(async () => {
+    if (!canRender) return;
+    setSnapshotError(null);
+    setSnapshotNotice(null);
+    try {
+      const path = await save({
+        title: 'Save snapshot',
+        defaultPath: `flinch-${paramsRef.current.view}-frame-${frameRef.current}.png`,
+        filters: [{ name: 'PNG image', extensions: ['png'] }],
+      });
+      if (!path) return;
+      setSnapshotting(true);
+      await invoke('export_snapshot', { script, frame: frameRef.current, preview: paramsRef.current, outPath: path });
+      setSnapshotNotice('Snapshot saved');
+      setTimeout(() => setSnapshotNotice(null), 4000);
+    } catch (e: unknown) {
+      setSnapshotError(String(e));
+    } finally {
+      setSnapshotting(false);
+    }
+  }, [canRender, script]);
+
   // Reset cache and preview when script changes
   useEffect(() => {
     frameCacheRef.current.clear();
@@ -259,6 +382,41 @@ export function FrameScrubber({ script, frameRange }: FrameScrubberProps) {
         <div className="px-3 py-1 bg-flinch-error/15 border-b border-flinch-error/30 text-2xs text-flinch-error font-mono flex items-center justify-between shrink-0">
           <span className="truncate">Blender launch error: {blenderLaunchError}</span>
           <button onClick={() => setBlenderLaunchError(null)} className="ml-2 text-flinch-text-muted hover:text-flinch-text">✕</button>
+        </div>
+      )}
+
+      {/* View, shading and snapshot controls */}
+      <div className="px-3 py-1.5 bg-flinch-panel/30 border-b border-flinch-border-dim/40 flex flex-wrap items-center gap-x-3 gap-y-1.5 shrink-0">
+        <Segmented label="Camera angle" value={viewPreset} options={VIEW_OPTIONS} onChange={setViewPreset} />
+        <Segmented label="Shading" value={shadingMode} options={SHADING_OPTIONS} onChange={setShadingMode} />
+        {shadingMode === 'solid' && (
+          <label
+            className="flex items-center gap-1.5 text-2xs text-flinch-text-muted cursor-pointer select-none"
+            title="Light the model with a MatCap. This replaces material colors with the MatCap's own."
+          >
+            <input type="checkbox" checked={matcap} onChange={(e) => setMatcap(e.target.checked)} className="accent-flinch-accent" />
+            <span>MatCap</span>
+          </label>
+        )}
+        <div className="ml-auto flex items-center gap-2">
+          {snapshotNotice && <span className="text-2xs text-flinch-success" role="status">{snapshotNotice}</span>}
+          <button
+            type="button"
+            onClick={handleSnapshot}
+            disabled={!canRender || snapshotting}
+            title="Render this frame at 1920x1080 and save it as a PNG"
+            className="flex items-center gap-1.5 rounded border border-flinch-border/50 bg-flinch-surface/60 px-2 py-1 text-2xs text-flinch-text-muted hover:border-flinch-accent/50 hover:text-flinch-text flinch-transition disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {snapshotting ? <Loader2 size={11} className="animate-spin text-flinch-accent" /> : <Camera size={11} className="text-flinch-accent" />}
+            <span>{snapshotting ? 'Rendering...' : 'Snapshot'}</span>
+          </button>
+        </div>
+      </div>
+
+      {snapshotError && (
+        <div className="px-3 py-1 bg-flinch-error/15 border-b border-flinch-error/30 text-2xs text-flinch-error font-mono flex items-start justify-between shrink-0">
+          <span className="whitespace-pre-wrap break-words max-h-16 overflow-y-auto">{snapshotError}</span>
+          <button onClick={() => setSnapshotError(null)} className="ml-2 shrink-0 text-flinch-text-muted hover:text-flinch-text" aria-label="Dismiss">✕</button>
         </div>
       )}
 

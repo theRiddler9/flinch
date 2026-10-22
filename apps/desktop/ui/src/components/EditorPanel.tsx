@@ -3,7 +3,7 @@ import { Editor, DiffEditor, type Monaco } from '@monaco-editor/react';
 import {
   WarningCircle as AlertCircle, CheckCircle as CheckCircle2, DownloadSimple as Download, FileCode,
   CaretDown as ChevronDown, CaretRight as ChevronRight, Copy, Code as Code2, Sparkle as Sparkles,
-  Columns, Video,
+  Columns, Video, BookOpenText,
 } from '@phosphor-icons/react';
 import { invoke } from '@tauri-apps/api/core';
 import { tempDir, join } from '@tauri-apps/api/path';
@@ -11,11 +11,13 @@ import { save } from '@tauri-apps/plugin-dialog';
 import { cn } from '../lib/utils';
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { FrameScrubber } from './FrameScrubber';
+import { GuideDock } from './ModelingGuide';
+import { resolveGuide } from '../lib/guide';
 
 const DEFAULT_SCRIPT = ``;
 
 export function EditorPanel() {
-  const { attempts, activeAttemptIndex, setActiveAttempt, finalResult, theme, fontSize } = useStore();
+  const { attempts, activeAttemptIndex, setActiveAttempt, finalResult, theme, fontSize, guideOpen, setGuideOpen } = useStore();
   const [errorExpanded, setErrorExpanded] = useState(true);
   const [viewMode, setViewMode] = useState<'split' | 'viewport' | 'code'>('split');
 
@@ -104,6 +106,12 @@ export function EditorPanel() {
         ]
       : [1, 60];
   }, [currentAttempt?.harness_result?.scene_stats?.frame_range]);
+
+  // Guide for the attempt being viewed; "unchanged" replies fall back to the earlier guide.
+  const guide = useMemo(
+    () => resolveGuide(attempts.map((a) => a.raw_response), activeAttemptIndex),
+    [attempts, activeAttemptIndex],
+  );
 
   if (attempts.length === 0) {
     return (
@@ -202,6 +210,21 @@ export function EditorPanel() {
           )}
           <div className="w-px h-5 bg-flinch-border-dim mx-1" />
 
+          <button
+            onClick={() => setGuideOpen(!guideOpen)}
+            aria-pressed={guideOpen}
+            title="Manual modeling guide: how to build this model by hand in Blender"
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium flinch-transition flinch-focus-ring border",
+              guideOpen
+                ? "bg-flinch-accent text-white border-flinch-accent"
+                : "text-flinch-text-dim hover:text-flinch-text bg-flinch-surface/40 hover:bg-flinch-surface border-flinch-border-dim"
+            )}
+          >
+            <BookOpenText size={16} />
+            <span>Guide</span>
+            {guide && !guideOpen && <span className="w-1.5 h-1.5 rounded-full bg-flinch-accent" aria-label="Guide available" />}
+          </button>
           <button onClick={handleCopyCode} title="Copy Code"
             className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium flinch-transition flinch-focus-ring text-flinch-text-dim hover:text-flinch-text bg-flinch-surface/40 hover:bg-flinch-surface border border-flinch-border-dim">
             <Copy size={16} /> Copy Code
@@ -221,8 +244,9 @@ export function EditorPanel() {
         </div>
       </div>
 
-      {/* ── Main Workspace Area ─── */}
-      <div ref={containerRef} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+      {/* ── Main Workspace Area (+ docked modeling guide) ─── */}
+      <div className="flex flex-1 min-h-0 min-w-0">
+      <div ref={containerRef} className="flex-1 min-w-0 flex flex-col min-h-0 overflow-hidden">
         {viewMode === 'viewport' ? (
           /* FULL VIEWPORT & SCRUBBER */
           <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
@@ -324,6 +348,8 @@ export function EditorPanel() {
             </div>
           </>
         )}
+      </div>
+      {guideOpen && <GuideDock guide={guide} onClose={() => setGuideOpen(false)} />}
       </div>
 
       {/* ── Error / Diagnostics Panel ───────────────────────── */}
