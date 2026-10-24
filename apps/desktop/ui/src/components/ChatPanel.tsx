@@ -2,6 +2,8 @@ import { useState, useRef, useEffect, type FormEvent } from 'react';
 import { useStore } from '../state/useStore';
 import { PaperPlaneRight as Send, Stop as Square, TerminalWindow as Terminal, SpinnerGap as Loader2, User, Code, Copy, Check } from '@phosphor-icons/react';
 import { cn } from '../lib/utils';
+import { splitReply } from '../lib/guide';
+import { GuideCard } from './ModelingGuide';
 
 export function ChatPanel() {
   const [input, setInput] = useState('');
@@ -167,28 +169,29 @@ export function ChatPanel() {
 }
 
 function ChatMessageContent({ content }: { content: string }) {
-  if (!content.includes('```')) {
+  const setGuideOpen = useStore((s) => s.setGuideOpen);
+  const segments = splitReply(content);
+
+  if (segments.length === 0) return null;
+  if (segments.length === 1 && segments[0].kind === 'text') {
     return <div className="whitespace-pre-wrap break-words">{content}</div>;
   }
 
-  const parts = content.split(/(```[\s\S]*?```)/g);
-
   return (
     <div className="space-y-1.5">
-      {parts.map((part, index) => {
-        if (part.startsWith('```') && part.endsWith('```')) {
-          const firstLineEnd = part.indexOf('\n');
-          const lang = firstLineEnd !== -1 ? part.slice(3, firstLineEnd).trim() || 'python' : 'python';
-          const code = firstLineEnd !== -1 ? part.slice(firstLineEnd + 1, -3).trim() : part.slice(3, -3).trim();
-
-          return <CodeSnippet key={index} code={code} lang={lang} />;
+      {segments.map((segment, index) => {
+        switch (segment.kind) {
+          case 'guide':
+            return segment.guide.unchanged ? (
+              <div key={index} className="text-xs italic text-flinch-text-muted">Modeling guide unchanged from the previous attempt.</div>
+            ) : (
+              <GuideCard key={index} guide={segment.guide} onOpenBeside={() => setGuideOpen(true)} />
+            );
+          case 'code':
+            return <CodeSnippet key={index} code={segment.code} lang={segment.lang} />;
+          default:
+            return <div key={index} className="whitespace-pre-wrap break-words">{segment.text}</div>;
         }
-        if (!part.trim()) return null;
-        return (
-          <div key={index} className="whitespace-pre-wrap break-words">
-            {part}
-          </div>
-        );
       })}
     </div>
   );

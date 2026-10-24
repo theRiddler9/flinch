@@ -189,7 +189,7 @@ impl Agent {
 
                 messages.push(ChatMessage {
                     role: "user".to_string(),
-                    content: "No Python code block found in your response. Please provide the complete script in a single ```python block.".to_string(),
+                    content: "No Python code block found in your response. Reply with the manual guide, then the complete script in a single ```python block under \"### \u{1F40D} Executable Blender Python (bpy) Script\".".to_string(),
                 });
                 continue;
             }
@@ -291,27 +291,217 @@ impl Agent {
     }
 }
 
-fn extract_python_code(text: &str) -> String {
-    let mut script = String::new();
-    let mut in_block = false;
+/// One fenced code block found in a model reply.
+struct FencedBlock {
+    /// Lower-cased first word of the info string (`python`, `text`, ...); empty when untagged.
+    lang: String,
+    body: String,
+    /// False when the reply ended before the closing fence (truncated output).
+    closed: bool,
+}
+
+fn is_python_lang(lang: &str) -> bool {
+    matches!(lang, "python" | "py" | "python3" | "py3" | "bpy")
+}
+
+/// Splits a reply into fenced code blocks, following CommonMark's fence rules closely enough for
+/// LLM output: a fence is 3+ backticks (no backticks in its info string), and only a bare fence
+/// at least as long closes it, so longer outer fences can contain shorter inner ones. Indent on
+/// a fence (e.g. inside a list item) is removed from its content.
+fn parse_fenced_blocks(text: &str) -> Vec<FencedBlock> {
+    struct Open {
+        fence_len: usize,
+        indent: usize,
+        lang: String,
+        body: String,
+    }
+
+    let mut blocks = Vec::new();
+    let mut open: Option<Open> = None;
 
     for line in text.lines() {
         let trimmed = line.trim_start();
-        if trimmed.starts_with("```python")
-            || trimmed.starts_with("``` python")
-            || trimmed.starts_with("```py")
-        {
-            in_block = true;
-            continue;
-        } else if trimmed.starts_with("```") && in_block {
-            break;
-        }
+        let indent = line.len() - trimmed.len();
+        let ticks = trimmed.chars().take_while(|c| *c == '`').count();
 
-        if in_block {
-            script.push_str(line);
-            script.push('\n');
+        if let Some(cur) = open.as_mut() {
+            if ticks >= cur.fence_len && trimmed[ticks..].trim().is_empty() {
+                if let Some(done) = open.take() {
+                    blocks.push(FencedBlock {
+                        lang: done.lang,
+                        body: done.body,
+                        closed: true,
+                    });
+                }
+            } else {
+                cur.body.push_str(&line[indent.min(cur.indent)..]);
+                cur.body.push('\n');
+            }
+        } else if ticks >= 3 && !trimmed[ticks..].contains('`') {
+            let lang = trimmed[ticks..]
+                .split_whitespace()
+                .next()
+                .unwrap_or("")
+                .trim_start_matches('{')
+                .trim_start_matches('.')
+                .trim_end_matches('}')
+                .to_lowercase();
+            open = Some(Open {
+                fence_len: ticks,
+                indent,
+                lang,
+                body: String::new(),
+            });
         }
     }
 
-    script
+    if let Some(done) = open {
+        blocks.push(FencedBlock {
+            lang: done.lang,
+            body: done.body,
+            closed: false,
+        });
+    }
+    blocks
+}
+
+/// Returns the script to execute: the contents of the fenced Python block only.
+///
+/// Replies hold a manual modeling guide (headings, steps, inline code, maybe other fenced blocks)
+/// followed by the script; none of that may reach the harness. Selection order, so a stray
+/// snippet in the guide never beats the real script:
+///   1. the last closed python block that imports `bpy`
+///   2. the last closed python block
+///   3. a python block cut off by truncation (no closing fence)
+///   4. the last untagged closed block that imports `bpy`
+///
+/// Returns an empty string when nothing qualifies.
+fn extract_python_code(text: &str) -> String {
+    let blocks = parse_fenced_blocks(text);
+    let imports_bpy = |b: &FencedBlock| {
+        b.body.lines().any(|l| {
+            let l = l.trim_start();
+            l.starts_with("import bpy") || l.starts_with("from bpy")
+        })
+    };
+    let python = |b: &&FencedBlock| is_python_lang(&b.lang);
+
+    blocks
+        .iter()
+        .rev()
+        .filter(python)
+        .find(|b| b.closed && imports_bpy(b))
+        .or_else(|| blocks.iter().rev().filter(python).find(|b| b.closed))
+        .or_else(|| blocks.iter().rev().filter(python).find(|b| !b.closed))
+        .or_else(|| {
+            blocks
+                .iter()
+                .rev()
+                .find(|b| b.lang.is_empty() && b.closed && imports_bpy(b))
+        })
+        .map(|b| b.body.clone())
+        .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::extract_python_code as x;
+
+    const GUIDE: &str = "### \u{1F6E0}\u{FE0F} Manual Blender Step-by-Step Modeling Guide\n\
+1. **Add a cube.** `Shift + A > Mesh > Cube`, then `Tab` for Edit Mode.\n\
+2. **Bevel it.** `Ctrl + B`.\n\
+\n\
+**Tips for making it your own**\n\
+- Add a `Ctrl + R` loop cut.\n\
+\n\
+### \u{1F40D} Executable Blender Python (bpy) Script\n";
+
+    #[test]
+    fn isolates_script_from_guide_headings_and_trailing_text() {
+        let text = format!(
+            "{GUIDE}```python\nimport bpy\nx = 1\n```\nHope this helps! `Ctrl + Z` undoes.\n"
+        );
+        let script = x(&text);
+        assert_eq!(script, "import bpy\nx = 1\n");
+        assert!(
+            !script.contains("Manual") && !script.contains("###") && !script.contains("Shift + A")
+        );
+    }
+
+    #[test]
+    fn ignores_other_fenced_blocks() {
+        let text = format!(
+            "{GUIDE}```text\nShift + A\n```\n```bash\nblender -b\n```\n```json\n{{\"a\": 1}}\n```\n```python\nimport bpy\nx = 1\n```\n"
+        );
+        assert_eq!(x(&text), "import bpy\nx = 1\n");
+    }
+
+    #[test]
+    fn real_script_wins_over_snippets_and_last_bpy_block_wins() {
+        let snippet = "```python\nobj.location.z = 2\n```\n```python\nimport bpy\nreal = 1\n```\n";
+        assert_eq!(x(snippet), "import bpy\nreal = 1\n");
+        let two = "```python\nimport bpy\nold = 1\n```\n```python\nimport bpy\nnew = 2\n```\n";
+        assert_eq!(x(two), "import bpy\nnew = 2\n");
+    }
+
+    #[test]
+    fn longer_outer_fence_keeps_inner_fences_as_content() {
+        let text = "````python\nimport bpy\ns = \"\"\"\n```\n\"\"\"\n````\n";
+        assert_eq!(x(text), "import bpy\ns = \"\"\"\n```\n\"\"\"\n");
+    }
+
+    #[test]
+    fn indented_fence_in_a_list_is_dedented() {
+        let text = "1. Do this:\n   ```python\n   import bpy\n   if True:\n       pass\n   ```\n";
+        assert_eq!(x(text), "import bpy\nif True:\n    pass\n");
+    }
+
+    #[test]
+    fn language_aliases_and_lookalikes() {
+        assert_eq!(x("```py\nimport bpy\n```\n"), "import bpy\n");
+        assert_eq!(x("```Python3\nimport bpy\n```\n"), "import bpy\n");
+        assert_eq!(
+            x("```python title=\"a.py\"\nimport bpy\n```\n"),
+            "import bpy\n"
+        );
+        assert_eq!(x("```{.python}\nimport bpy\n```\n"), "import bpy\n");
+        assert_eq!(x("```pythonic\nimport bpy\n```\n"), "");
+        assert_eq!(x("```pyrex\nimport bpy\n```\n"), "");
+    }
+
+    #[test]
+    fn handles_crlf_line_endings() {
+        assert_eq!(
+            x("### Guide\r\n1. Step\r\n```python\r\nimport bpy\r\nx = 1\r\n```\r\n"),
+            "import bpy\nx = 1\n"
+        );
+    }
+
+    #[test]
+    fn truncated_reply_returns_partial_script_but_closed_block_wins() {
+        let text = format!("{GUIDE}```python\nimport bpy\nbpy.ops.mesh.primitive_cube_add(");
+        assert_eq!(x(&text), "import bpy\nbpy.ops.mesh.primitive_cube_add(\n");
+        let both = "```python\nimport bpy\nok = 1\n```\n```python\nimport bpy\nbroken = (";
+        assert_eq!(x(both), "import bpy\nok = 1\n");
+    }
+
+    #[test]
+    fn untagged_block_only_when_it_imports_bpy() {
+        assert_eq!(x("```\nimport bpy\nx = 1\n```\n"), "import bpy\nx = 1\n");
+        assert_eq!(x("```\njust notes\n```\n"), "");
+    }
+
+    #[test]
+    fn guide_only_and_inline_code_never_count() {
+        assert_eq!(x(GUIDE), "");
+        assert_eq!(x(""), "");
+        assert_eq!(
+            x("```inline``` is a span.\n```python\nimport bpy\n```\n"),
+            "import bpy\n"
+        );
+        assert_eq!(
+            x("Use ```inline``` and `Ctrl + B`.\n```python\nimport bpy\n```\n"),
+            "import bpy\n"
+        );
+    }
 }

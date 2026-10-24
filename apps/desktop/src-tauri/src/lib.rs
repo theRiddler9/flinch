@@ -1,4 +1,5 @@
 use flinch_core::agent::loop_logic::{Agent, AgentConfig, AgentResult};
+use flinch_core::harness::{PreviewOptions, ShadingMode, ViewPreset};
 use flinch_core::provider::openai_compat::OpenAiCompatProvider;
 use flinch_core::runner::process::{ExportOptions, Runner, RunnerConfig};
 use flinch_core::store::db::Store;
@@ -79,6 +80,54 @@ struct DoctorResult {
     provider_error: Option<String>,
 }
 
+/// Viewport options sent by the UI for every preview render.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PreviewParams {
+    view: ViewPreset,
+    shading: ShadingMode,
+    engine: String,
+    #[serde(default)]
+    matcap: bool,
+}
+
+impl PreviewParams {
+    fn into_options(self, size: Option<(u32, u32)>) -> PreviewOptions {
+        PreviewOptions {
+            view: self.view,
+            shading: self.shading,
+            engine: self.engine,
+            matcap: self.matcap,
+            size,
+        }
+    }
+}
+
+/// Size of the image saved by the Snapshot button.
+const SNAPSHOT_SIZE: (u32, u32) = (1920, 1080);
+
+/// Best available explanation for a render that produced no image, read from the harness result.
+fn render_failure_message(result_path: &std::path::Path) -> String {
+    let fallback = "Blender exited successfully but did not write the image file.".to_string();
+    let Ok(text) = std::fs::read_to_string(result_path) else {
+        return fallback;
+    };
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return fallback;
+    };
+    let msg = |e: &serde_json::Value| {
+        e.get("message")
+            .and_then(|m| m.as_str())
+            .map(String::from)
+            .or_else(|| e.as_str().map(String::from))
+    };
+    v.get("render")
+        .and_then(|r| r.get("error"))
+        .and_then(msg)
+        .or_else(|| v.get("error").and_then(msg))
+        .unwrap_or(fallback)
+}
+
 #[tauri::command]
 async fn run_prompt(
     app_handle: tauri::AppHandle,
@@ -144,7 +193,7 @@ async fn export_blend(
             None,
             Some(ExportOptions {
                 save_blend: Some(out_path),
-                render_image: None,
+                ..Default::default()
             }),
             |_log| async move {},
         )
@@ -171,8 +220,8 @@ async fn export_preview(
             &script,
             None,
             Some(ExportOptions {
-                save_blend: None,
                 render_image: Some(out_path),
+                ..Default::default()
             }),
             |_log| async move {},
         )
@@ -187,7 +236,7 @@ async fn render_frame(
     script: String,
     frame: i32,
     _out_path: Option<String>,
-    engine: String,
+    preview: PreviewParams,
 ) -> Result<String, String> {
     // UUID suffix ensures concurrent or rapid sequential renders NEVER clash or lock
     // each other out of script, result, or image files on Windows.
@@ -223,8 +272,7 @@ async fn render_frame(
         .arg(&out_path_for_blender)
         .arg("--frame")
         .arg(frame.to_string())
-        .arg("--engine")
-        .arg(&engine);
+        .args(preview.into_options(None).to_args());
 
     #[cfg(windows)]
     {
@@ -259,23 +307,7 @@ async fn render_frame(
 
     if !out_file.exists() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        let result_json =
-            std::fs::read_to_string(&result_path).unwrap_or_else(|_| "No result.json".to_string());
-        let render_err = serde_json::from_str::<serde_json::Value>(&result_json)
-            .ok()
-            .and_then(|v| {
-                v.get("render")
-                    .and_then(|r| r.get("error"))
-                    .and_then(|e| e.as_str().map(String::from))
-                    .or_else(|| {
-                        v.get("error")
-                            .and_then(|e| e.get("message"))
-                            .and_then(|m| m.as_str().map(String::from))
-                    })
-            })
-            .unwrap_or_else(|| {
-                "Blender exited successfully but did not write the image file.".to_string()
-            });
+        let render_err = render_failure_message(&result_path);
         let _ = std::fs::remove_file(&script_path);
         let _ = std::fs::remove_file(&result_path);
         return Err(format!(
@@ -309,7 +341,7 @@ async fn render_sequence(
     script: String,
     start_frame: i32,
     end_frame: i32,
-    engine: String,
+    preview: PreviewParams,
 ) -> Result<std::collections::HashMap<i32, String>, String> {
     let uid = uuid::Uuid::new_v4().simple().to_string();
     let tmp = std::env::temp_dir();
@@ -346,8 +378,7 @@ async fn render_sequence(
         .arg(end_frame.to_string())
         .arg("--render-dir")
         .arg(&seq_dir_str)
-        .arg("--engine")
-        .arg(&engine);
+        .args(preview.into_options(None).to_args());
 
     #[cfg(windows)]
     {
@@ -388,6 +419,70 @@ async fn render_sequence(
     }
 
     Ok(frames)
+}
+
+/// Renders one high-resolution frame straight to `out_path` (chosen in the OS save dialog).
+#[tauri::command]
+async fn export_snapshot(
+    state: State<'_, Arc<AppState>>,
+    script: String,
+    frame: i32,
+    preview: PreviewParams,
+    out_path: String,
+) -> Result<(), String> {
+    let uid = uuid::Uuid::new_v4().simple().to_string();
+    let tmp = std::env::temp_dir();
+    let script_path = tmp.join(format!("flinch_snapshot_{}.py", uid));
+    let result_path = tmp.join(format!("flinch_snapshot_{}_result.json", uid));
+    std::fs::write(&script_path, &script).map_err(|e| e.to_string())?;
+
+    let runner = state.runner.read().await;
+    let blender_bin = resolve_blender_binary(runner.blender_bin());
+    let harness_path = resolve_workspace_path("blender/harness.py");
+
+    let mut cmd = tokio::process::Command::new(&blender_bin);
+    cmd.arg("-b")
+        .arg("--factory-startup")
+        .arg("--python-exit-code")
+        .arg("1")
+        .arg("--python")
+        .arg(&harness_path)
+        .arg("--")
+        .arg("--script")
+        .arg(&script_path)
+        .arg("--out")
+        .arg(&result_path)
+        .arg("--render-image")
+        .arg(out_path.replace('\\', "/"))
+        .arg("--frame")
+        .arg(frame.to_string())
+        .args(preview.into_options(Some(SNAPSHOT_SIZE)).to_args());
+
+    #[cfg(windows)]
+    {
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+
+    let output = cmd
+        .output()
+        .await
+        .map_err(|e| format!("Failed to spawn blender: {}", e))?;
+
+    let rendered = std::path::Path::new(&out_path).is_file();
+    let failure = render_failure_message(&result_path);
+    let _ = std::fs::remove_file(&script_path);
+    let _ = std::fs::remove_file(&result_path);
+
+    if !output.status.success() || !rendered {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let lines: Vec<&str> = stderr.lines().filter(|l| !l.trim().is_empty()).collect();
+        let tail = lines[lines.len().saturating_sub(10)..].join("\n");
+        return Err(format!(
+            "Snapshot render failed.\n{}\nStderr tail: {}",
+            failure, tail
+        ));
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -957,6 +1052,7 @@ pub fn run() {
             open_in_blender,
             render_frame,
             render_sequence,
+            export_snapshot,
             get_system_metrics,
             get_settings,
             save_settings,
